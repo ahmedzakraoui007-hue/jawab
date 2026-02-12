@@ -1,10 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import {
     Layout,
     Menu,
@@ -37,46 +39,85 @@ import {
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
 
-// Navigation items for Ant Design Menu
-const menuItems: MenuProps['items'] = [
-    {
-        key: '/dashboard',
-        icon: <DashboardOutlined />,
-        label: <Link href="/dashboard">Overview</Link>,
-    },
-    {
-        key: '/dashboard/conversations',
-        icon: <Badge count={3} size="small" offset={[10, 0]}><MessageOutlined /></Badge>,
-        label: <Link href="/dashboard/conversations">Conversations</Link>,
-    },
-    {
-        key: '/dashboard/knowledge',
-        icon: <BookOutlined />,
-        label: <Link href="/dashboard/knowledge">Knowledge</Link>,
-    },
-    {
-        key: '/dashboard/bookings',
-        icon: <CalendarOutlined />,
-        label: <Link href="/dashboard/bookings">Bookings</Link>,
-    },
-    {
-        key: '/dashboard/analytics',
-        icon: <BarChartOutlined />,
-        label: <Link href="/dashboard/analytics">Analytics</Link>,
-    },
-    {
-        key: '/dashboard/settings',
-        icon: <SettingOutlined />,
-        label: <Link href="/dashboard/settings">Settings</Link>,
-    },
-];
-
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
     const { user, signOut, loading } = useAuth();
     const [collapsed, setCollapsed] = useState(false);
     const [isSigningOut, setIsSigningOut] = useState(false);
+    const [businessName, setBusinessName] = useState<string>('');
+    const [businessInitials, setBusinessInitials] = useState<string>('');
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Fetch business name from Firestore
+    useEffect(() => {
+        async function fetchBusiness() {
+            if (!user?.businessId || !db) return;
+            try {
+                const bizDoc = await getDoc(doc(db, 'businesses', user.businessId));
+                if (bizDoc.exists()) {
+                    const name = bizDoc.data().name || 'My Business';
+                    setBusinessName(name);
+                    setBusinessInitials(
+                        name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
+                    );
+                }
+            } catch (err) {
+                console.error('Error fetching business:', err);
+            }
+        }
+        fetchBusiness();
+    }, [user?.businessId]);
+
+    // Fetch unread conversation count
+    useEffect(() => {
+        async function fetchUnread() {
+            if (!user?.businessId || !db) return;
+            try {
+                const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
+                const q = query(convsRef, where('status', '==', 'active'));
+                const snap = await getDocs(q);
+                setUnreadCount(snap.size);
+            } catch (err) {
+                console.error('Error fetching unread count:', err);
+            }
+        }
+        fetchUnread();
+    }, [user?.businessId]);
+
+    // Navigation items (inside component to use dynamic unreadCount)
+    const menuItems: MenuProps['items'] = [
+        {
+            key: '/dashboard',
+            icon: <DashboardOutlined />,
+            label: <Link href="/dashboard">Overview</Link>,
+        },
+        {
+            key: '/dashboard/conversations',
+            icon: <Badge count={unreadCount} size="small" offset={[10, 0]}><MessageOutlined /></Badge>,
+            label: <Link href="/dashboard/conversations">Conversations</Link>,
+        },
+        {
+            key: '/dashboard/knowledge',
+            icon: <BookOutlined />,
+            label: <Link href="/dashboard/knowledge">Knowledge</Link>,
+        },
+        {
+            key: '/dashboard/bookings',
+            icon: <CalendarOutlined />,
+            label: <Link href="/dashboard/bookings">Bookings</Link>,
+        },
+        {
+            key: '/dashboard/analytics',
+            icon: <BarChartOutlined />,
+            label: <Link href="/dashboard/analytics">Analytics</Link>,
+        },
+        {
+            key: '/dashboard/settings',
+            icon: <SettingOutlined />,
+            label: <Link href="/dashboard/settings">Settings</Link>,
+        },
+    ];
 
     const handleSignOut = async () => {
         setIsSigningOut(true);
@@ -222,11 +263,11 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                                     fontWeight: 600,
                                 }}
                             >
-                                GS
+                                {businessInitials || 'JW'}
                             </Avatar>
                             <div style={{ flex: 1, minWidth: 0 }}>
                                 <Text strong style={{ display: 'block', fontSize: 13 }}>
-                                    Glamour Ladies Salon
+                                    {businessName || 'My Business'}
                                 </Text>
                                 <Text type="secondary" style={{ fontSize: 12 }}>
                                     Professional Plan
@@ -272,7 +313,8 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                     {/* Right side */}
                     <Space size="small">
                         <Button type="text" icon={<QuestionCircleOutlined />} />
-                        <Badge count={2} size="small">
+                        {/* TODO: Replace with real notification count */}
+                        <Badge count={0} size="small">
                             <Button type="text" icon={<BellOutlined />} />
                         </Badge>
                         <Dropdown

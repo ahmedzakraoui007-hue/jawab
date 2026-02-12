@@ -1,3 +1,6 @@
+// SERVER-ONLY: This file must never be imported from client components.
+// It is only used in API routes (src/app/api/*).
+
 import { initializeApp, getApps, cert, type ServiceAccount } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 

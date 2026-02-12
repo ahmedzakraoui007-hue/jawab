@@ -9,6 +9,8 @@ import {
     onAuthStateChanged,
     GoogleAuthProvider,
     signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     RecaptchaVerifier,
     signInWithPhoneNumber,
     ConfirmationResult,
@@ -67,6 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setLoading(false);
             return;
         }
+
+        // Handle redirect result (for mobile Google sign-in)
+        getRedirectResult(auth).then(async (result) => {
+            if (result?.user) {
+                await createUserDocument(result.user);
+            }
+        }).catch((err) => {
+            console.error('Redirect sign-in error:', err);
+            setError(getAuthErrorMessage(err));
+        });
 
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
@@ -201,8 +213,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             provider.addScope('email');
             provider.addScope('profile');
 
-            const result = await signInWithPopup(auth!, provider);
-            await createUserDocument(result.user);
+            // Use redirect on mobile (popups are often blocked), popup on desktop
+            const isMobile = typeof window !== 'undefined' && (
+                /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                window.innerWidth < 768
+            );
+
+            if (isMobile) {
+                await signInWithRedirect(auth!, provider);
+                // Page will redirect — result handled in useEffect
+            } else {
+                const result = await signInWithPopup(auth!, provider);
+                await createUserDocument(result.user);
+            }
         } catch (err: unknown) {
             const errorMessage = getAuthErrorMessage(err);
             setError(errorMessage);

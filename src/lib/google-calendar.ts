@@ -170,7 +170,7 @@ export async function getAvailableSlots(
 
     // Generate all possible slots
     const slots: TimeSlot[] = [];
-    const slotDuration = serviceDuration; // 30 minutes default
+    const slotDuration = serviceDuration;
 
     let currentTime = new Date(date);
     currentTime.setHours(openHour, openMin, 0, 0);
@@ -193,8 +193,8 @@ export async function getAvailableSlots(
             available: isAvailable,
         });
 
-        // Move to next slot (30 min intervals)
-        currentTime = new Date(currentTime.getTime() + 30 * 60000);
+        // Move to next slot
+        currentTime = new Date(currentTime.getTime() + slotDuration * 60000);
     }
 
     return slots;
@@ -207,7 +207,8 @@ export async function createBookingEvent(
     accessToken: string,
     refreshToken: string | undefined,
     calendarId: string,
-    booking: Booking
+    booking: Booking,
+    timezone: string = 'Asia/Dubai'
 ): Promise<string> {
     const calendar = getCalendarClient(accessToken, refreshToken);
 
@@ -228,11 +229,11 @@ Booked via Jawab AI
         `.trim(),
                 start: {
                     dateTime: booking.startTime.toISOString(),
-                    timeZone: 'Asia/Dubai', // Default to UAE timezone
+                    timeZone: timezone,
                 },
                 end: {
                     dateTime: booking.endTime.toISOString(),
-                    timeZone: 'Asia/Dubai',
+                    timeZone: timezone,
                 },
                 reminders: {
                     useDefault: false,
@@ -282,7 +283,8 @@ export async function updateBookingEvent(
     refreshToken: string | undefined,
     calendarId: string,
     eventId: string,
-    updates: Partial<Pick<Booking, 'startTime' | 'endTime' | 'notes'>>
+    updates: Partial<Pick<Booking, 'startTime' | 'endTime' | 'notes'>>,
+    timezone: string = 'Asia/Dubai'
 ): Promise<void> {
     const calendar = getCalendarClient(accessToken, refreshToken);
 
@@ -292,14 +294,14 @@ export async function updateBookingEvent(
         if (updates.startTime) {
             updateData.start = {
                 dateTime: updates.startTime.toISOString(),
-                timeZone: 'Asia/Dubai',
+                timeZone: timezone,
             };
         }
 
         if (updates.endTime) {
             updateData.end = {
                 dateTime: updates.endTime.toISOString(),
-                timeZone: 'Asia/Dubai',
+                timeZone: timezone,
             };
         }
 

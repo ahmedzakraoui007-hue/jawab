@@ -76,12 +76,12 @@ export function formatPhoneNumber(phone: string): string {
  * Detect language from text
  */
 export function detectLanguage(text: string): 'ar' | 'en' | 'hi' | 'ur' | 'unknown' {
+    // Urdu (Arabic script + Urdu-specific characters) — must check before Arabic
+    if (/[\u0600-\u06FF]/.test(text) && /[ے|ہ|ۓ|ٹ|ڈ|ڑ|ں|ھ]/.test(text)) return 'ur';
     // Arabic characters
     if (/[\u0600-\u06FF]/.test(text)) return 'ar';
     // Hindi/Devanagari
     if (/[\u0900-\u097F]/.test(text)) return 'hi';
-    // Urdu (uses Arabic script but different patterns)
-    if (/[\u0600-\u06FF]/.test(text) && /ے|ہ|ۓ/.test(text)) return 'ur';
     // Default to English
     if (/[a-zA-Z]/.test(text)) return 'en';
     return 'unknown';
