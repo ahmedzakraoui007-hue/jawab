@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper: Check if user owns or is staff of this business
+    function isBusinessMember(businessId) {
+      return request.auth != null && (
+        get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid ||
+        request.auth.uid in get(/databases/$(database)/documents/businesses/$(businessId)).data.staffIds
+      );
+    }
+    
+    // Users — only the user themselves can read/write their own doc
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Businesses — authenticated members only
+    match /businesses/{businessId} {
+      allow read: if request.auth != null && isBusinessMember(businessId);
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && isBusinessMember(businessId);
+      
+      // Conversations subcollection — business members only
+      match /conversations/{conversationId} {
+        allow read, write: if request.auth != null && isBusinessMember(businessId);
+      }
+    }
+    
+    // Bookings — business members only
+    match /bookings/{bookingId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+t=2026-02-05T15:24:38+0100 lvl=info msg="no configuration paths supplied"
+t=2026-02-05T15:24:39+0100 lvl=info msg="using configuration at default config path" path=/home/ahmed/.config/ngrok/ngrok.yml
+t=2026-02-05T15:24:39+0100 lvl=info msg="open config file" path=/home/ahmed/.config/ngrok/ngrok.yml err=nil
+t=2026-02-05T15:24:42+0100 lvl=info msg="FIPS 140 mode" enabled=false
+t=2026-02-05T15:24:42+0100 lvl=info msg="starting web service" obj=web addr=127.0.0.1:4040 allow_hosts=[]
+t=2026-02-05T15:24:43+0100 lvl=info msg="client session established" obj=tunnels.session
+t=2026-02-05T15:24:43+0100 lvl=info msg="tunnel session started" obj=tunnels.session
+t=2026-02-05T15:24:44+0100 lvl=info msg="started tunnel" obj=tunnels name=command_line addr=http://localhost:3000 url=https://unclearable-cristen-nonexcusably.ngrok-free.dev
+t=2026-02-05T15:24:44+0100 lvl=info msg="update available" obj=updater
+t=2026-02-05T15:28:02+0100 lvl=info msg="join connections" obj=join id=38b80798b4f4 l=127.0.0.1:3000 r=54.173.28.33:57438
+t=2026-02-05T15:39:37+0100 lvl=eror msg="heartbeat timeout, terminating session" obj=tunnels.session obj=csess id=5aea80cbeceb clientid=4d071da6a1090f435899f67f23657716
+t=2026-02-05T15:39:40+0100 lvl=eror msg="session closed, starting reconnect loop" obj=tunnels.session obj=csess id=eb035c224a16 err="read EOF from remote peer"
+t=2026-02-05T15:39:50+0100 lvl=info msg="client session established" obj=tunnels.session
+t=2026-02-05T15:39:50+0100 lvl=info msg="tunnel session started" obj=tunnels.session
