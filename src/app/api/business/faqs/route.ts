@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import {
-    doc,
-    getDoc,
-    updateDoc,
-    arrayUnion,
-    arrayRemove,
-    Timestamp
-} from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // FAQ type
 interface FAQ {
@@ -19,7 +12,7 @@ interface FAQ {
     category?: string;
     keywords?: string[];
     active: boolean;
-    createdAt?: Date;
+    createdAt?: string;
 }
 
 /**
@@ -33,20 +26,30 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'businessId required' }, { status: 400 });
     }
 
-    if (!db) {
+    if (!isAdminConfigured) {
         return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     try {
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessDoc = await adminDb.collection('businesses').doc(businessId).get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
-        const faqs = data.customFaqs || [];
+        const data = businessDoc.data()!;
+        const rawFaqs = data.customFaqs || [];
+        // Normalize FAQs: add missing id/active fields
+        const faqs: FAQ[] = rawFaqs.map((f: any, i: number) => ({
+            id: f.id || `faq_legacy_${i}`,
+            question: f.question || '',
+            questionAr: f.questionAr || undefined,
+            answer: f.answer || '',
+            answerAr: f.answerAr || undefined,
+            category: f.category || undefined,
+            keywords: f.keywords || [],
+            active: f.active !== false,
+        }));
 
         return NextResponse.json({ faqs });
     } catch (error) {
@@ -72,7 +75,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
@@ -85,13 +88,20 @@ export async function POST(request: NextRequest) {
             category: category || 'General',
             keywords: keywords || [],
             active: true,
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
         };
 
-        const businessRef = doc(db, 'businesses', businessId);
-        await updateDoc(businessRef, {
-            customFaqs: arrayUnion(newFaq),
-            updatedAt: Timestamp.now(),
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
+
+        if (!businessDoc.exists) {
+            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+        }
+
+        const existing = businessDoc.data()?.customFaqs || [];
+        await businessRef.update({
+            customFaqs: [...existing, newFaq],
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({
@@ -122,18 +132,18 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
+        const data = businessDoc.data()!;
         const faqs: FAQ[] = data.customFaqs || [];
 
         const faqIndex = faqs.findIndex(f => f.id === faqId);
@@ -141,12 +151,11 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'FAQ not found' }, { status: 404 });
         }
 
-        // Update the FAQ
         faqs[faqIndex] = { ...faqs[faqIndex], ...updates };
 
-        await updateDoc(businessRef, {
+        await businessRef.update({
             customFaqs: faqs,
-            updatedAt: Timestamp.now(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({
@@ -177,28 +186,28 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
+        const data = businessDoc.data()!;
         const faqs: FAQ[] = data.customFaqs || [];
+        const filtered = faqs.filter(f => f.id !== faqId);
 
-        const faqToRemove = faqs.find(f => f.id === faqId);
-        if (!faqToRemove) {
+        if (filtered.length === faqs.length) {
             return NextResponse.json({ error: 'FAQ not found' }, { status: 404 });
         }
 
-        await updateDoc(businessRef, {
-            customFaqs: arrayRemove(faqToRemove),
-            updatedAt: Timestamp.now(),
+        await businessRef.update({
+            customFaqs: filtered,
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({

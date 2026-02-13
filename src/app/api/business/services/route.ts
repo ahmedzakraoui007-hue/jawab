@@ -1,13 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase';
-import {
-    doc,
-    getDoc,
-    updateDoc,
-    arrayUnion,
-    arrayRemove,
-    Timestamp
-} from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // Service type
 interface Service {
@@ -19,7 +12,7 @@ interface Service {
     duration: number; // minutes
     category?: string;
     active: boolean;
-    createdAt?: Date;
+    createdAt?: string;
 }
 
 /**
@@ -33,20 +26,31 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'businessId required' }, { status: 400 });
     }
 
-    if (!db) {
+    if (!isAdminConfigured) {
         return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     try {
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessDoc = await adminDb.collection('businesses').doc(businessId).get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
-        const services = data.services || [];
+        const data = businessDoc.data()!;
+        // Normalize services: onboarding stores { name, price, duration }
+        // Knowledge page expects { id, name, price, duration, active, ... }
+        const rawServices = data.services || [];
+        const services: Service[] = rawServices.map((s: any, i: number) => ({
+            id: s.id || `svc_legacy_${i}`,
+            name: s.name || '',
+            nameAr: s.nameAr || undefined,
+            description: s.description || undefined,
+            price: Number(s.price) || 0,
+            duration: Number(s.duration) || 45,
+            category: s.category || undefined,
+            active: s.active !== false, // default to true if not set
+        }));
 
         return NextResponse.json({ services });
     } catch (error) {
@@ -72,7 +76,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
@@ -85,13 +89,20 @@ export async function POST(request: NextRequest) {
             duration: Number(duration),
             category: category || 'General',
             active: true,
-            createdAt: new Date(),
+            createdAt: new Date().toISOString(),
         };
 
-        const businessRef = doc(db, 'businesses', businessId);
-        await updateDoc(businessRef, {
-            services: arrayUnion(newService),
-            updatedAt: Timestamp.now(),
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
+
+        if (!businessDoc.exists) {
+            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+        }
+
+        const existing = businessDoc.data()?.services || [];
+        await businessRef.update({
+            services: [...existing, newService],
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({
@@ -122,18 +133,18 @@ export async function PUT(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
+        const data = businessDoc.data()!;
         const services: Service[] = data.services || [];
 
         const serviceIndex = services.findIndex(s => s.id === serviceId);
@@ -141,12 +152,11 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Service not found' }, { status: 404 });
         }
 
-        // Update the service
         services[serviceIndex] = { ...services[serviceIndex], ...updates };
 
-        await updateDoc(businessRef, {
+        await businessRef.update({
             services,
-            updatedAt: Timestamp.now(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({
@@ -177,28 +187,28 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        if (!db) {
+        if (!isAdminConfigured) {
             return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
         }
 
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessDoc = await getDoc(businessRef);
+        const businessRef = adminDb.collection('businesses').doc(businessId);
+        const businessDoc = await businessRef.get();
 
-        if (!businessDoc.exists()) {
+        if (!businessDoc.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const data = businessDoc.data();
+        const data = businessDoc.data()!;
         const services: Service[] = data.services || [];
+        const filtered = services.filter(s => s.id !== serviceId);
 
-        const serviceToRemove = services.find(s => s.id === serviceId);
-        if (!serviceToRemove) {
+        if (filtered.length === services.length) {
             return NextResponse.json({ error: 'Service not found' }, { status: 404 });
         }
 
-        await updateDoc(businessRef, {
-            services: arrayRemove(serviceToRemove),
-            updatedAt: Timestamp.now(),
+        await businessRef.update({
+            services: filtered,
+            updatedAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({
