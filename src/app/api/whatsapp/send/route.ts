@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppMessage, formatWhatsAppNumber, isTwilioConfigured } from '@/lib/twilio';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
         }
 
         // If businessId + conversationId provided, save the sent message to Firestore
-        if (businessId && conversationId && adminDb) {
+        if (businessId && conversationId && isAdminConfigured) {
             try {
                 const convRef = adminDb
                     .collection('businesses')

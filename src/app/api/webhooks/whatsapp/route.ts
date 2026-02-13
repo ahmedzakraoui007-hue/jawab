@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini';
 import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured } from '@/lib/twilio';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
@@ -171,6 +171,13 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
+        // Check Firebase Admin is configured
+        if (!isAdminConfigured) {
+            console.error('[WhatsApp] Firebase Admin SDK not configured — set FIREBASE_ADMIN_* env vars');
+            const twiml = buildTwiMLResponse("I'm sorry, we're not set up yet. Please try again later.");
+            return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+        }
+
         // Get the business data (MULTI-TENANT)
         const toNumber = incoming.to.replace('whatsapp:', '');
         const result = await getBusinessByPhone(toNumber);
@@ -243,6 +250,7 @@ export async function GET() {
     return NextResponse.json({
         status: 'WhatsApp webhook is active',
         configured: isTwilioConfigured,
+        firebaseAdmin: isAdminConfigured,
         timestamp: new Date().toISOString(),
     });
 }
