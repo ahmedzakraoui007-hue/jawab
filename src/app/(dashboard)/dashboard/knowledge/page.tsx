@@ -70,11 +70,11 @@ export default function KnowledgeBasePage() {
     const [serviceForm] = Form.useForm();
     const [faqForm] = Form.useForm();
 
-    const businessId = 'demo-business';
+    const businessId = user?.businessId;
 
     useEffect(() => {
-        fetchData();
-    }, []);
+        if (businessId) fetchData();
+    }, [businessId]);
 
     const fetchData = async () => {
         setLoading(true);
