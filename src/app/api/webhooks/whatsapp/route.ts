@@ -4,6 +4,19 @@ import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured } from '@/
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
+/**
+ * TWILIO WEBHOOK SETUP:
+ *
+ * 1. Go to https://console.twilio.com/
+ * 2. Navigate to: Messaging → Try it out → Send a WhatsApp message
+ * 3. In the Sandbox Configuration, set:
+ *    - "WHEN A MESSAGE COMES IN" webhook URL to:
+ *      https://jawab-eight.vercel.app/api/webhooks/whatsapp
+ *    - Method: POST
+ * 4. Send "join <sandbox-keyword>" from your WhatsApp to the Twilio sandbox number
+ * 5. Now messages sent to the sandbox number will hit this webhook
+ */
+
 // Types
 interface ConversationMessage {
     role: 'user' | 'model';
@@ -67,7 +80,8 @@ async function getBusinessByPhone(whatsappNumber: string): Promise<{ business: F
  */
 async function getConversationHistory(
     phoneNumber: string,
-    businessId: string
+    businessId: string,
+    profileName?: string
 ): Promise<{ id: string; messages: ConversationMessage[] }> {
     try {
         // Find existing active conversation in the business subcollection
@@ -91,6 +105,7 @@ async function getConversationHistory(
         const newConvRef = await convsRef.add({
             businessId,
             customerPhone: phoneNumber,
+            customerName: profileName || phoneNumber,
             channel: 'whatsapp',
             status: 'active',
             handledBy: 'ai',
@@ -174,7 +189,7 @@ export async function POST(request: NextRequest) {
         console.log(`[WhatsApp] Intent: ${intent.intent} (${Math.round(intent.confidence * 100)}%)`);
 
         // Get conversation history
-        const conversation = await getConversationHistory(incoming.from, businessId);
+        const conversation = await getConversationHistory(incoming.from, businessId, incoming.profileName);
 
         // Build system prompt with business data
         const systemPrompt = buildSystemPrompt({

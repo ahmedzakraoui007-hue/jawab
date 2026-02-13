@@ -1,32 +1,172 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Spin, Empty, message } from 'antd';
+import { useAuth } from '@/lib/auth-context';
+import { db } from '@/lib/firebase';
+import {
+    collection,
+    query,
+    orderBy,
+    onSnapshot,
+    doc,
+    updateDoc,
+    Timestamp,
+} from 'firebase/firestore';
 import { ConversationList, ChatWindow } from '@/components/dashboard';
 
-// Mock data
-const conversations = [
-    { id: '1', customerPhone: '+971 55 423 4421', customerName: 'Fatima Al Rashid', language: 'Arabic', channel: 'whatsapp' as const, status: 'active' as const, lastMessage: 'شكراً جزيلاً! موعدي يوم الخميس الساعة 4', timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(), unread: 0 },
-    { id: '2', customerPhone: '+971 50 882 8837', customerName: 'Sarah Johnson', language: 'English', channel: 'messenger' as const, status: 'resolved' as const, lastMessage: 'Thank you! Just sent you my booking confirmation', timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), unread: 0 },
-    { id: '3', customerPhone: '+971 52 771 1199', customerName: 'Priya Sharma', language: 'Hindi', channel: 'instagram_dm' as const, status: 'active' as const, lastMessage: 'Do you have any appointments for Saturday?', timestamp: new Date(Date.now() - 32 * 60 * 1000).toISOString(), unread: 2 },
-    { id: '4', customerPhone: '', customerName: 'Noor Ahmed', language: 'Arabic', channel: 'instagram_comment' as const, status: 'active' as const, lastMessage: '😍 Love this look! How much for bridal?', timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(), unread: 1, isPublic: true },
-    { id: '5', customerPhone: '+971 52 999 8888', customerName: 'Layla Hassan', language: 'Arabic', channel: 'voice' as const, status: 'escalated' as const, lastMessage: 'Called about rescheduling - needs human', timestamp: new Date(Date.now() - 90 * 60 * 1000).toISOString(), unread: 0 },
-];
-
-const selectedMessages = [
-    { id: '1', role: 'user' as const, content: 'السلام عليكم، هل عندكم مواعيد بكره؟', timestamp: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
-    { id: '2', role: 'assistant' as const, content: 'وعليكم السلام! 😊 أهلاً وسهلاً\nنعم عندنا مواعيد بكره. أي خدمة تحتاجين؟\n\n💇‍♀️ قص شعر - 80 درهم\n💅 مناكير وبديكير - 120 درهم\n💆‍♀️ مساج - 200 درهم', timestamp: new Date(Date.now() - 9 * 60 * 1000).toISOString() },
-    { id: '3', role: 'user' as const, content: 'قص شعر الساعة 4 العصر', timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString() },
-    { id: '4', role: 'assistant' as const, content: 'تمام! حجزت لك قص شعر بكره الخميس الساعة 4 العصر ✅\n\n📍 موقعنا: JLT Cluster D، جنب سبينيس\n\nنشوفك بكره إن شاء الله! 💕', timestamp: new Date(Date.now() - 7 * 60 * 1000).toISOString() },
-    { id: '5', role: 'user' as const, content: 'شكراً جزيلاً! موعدي يوم الخميس الساعة 4', timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString() },
-];
+function detectLanguageFromMessages(messages: { role: string; content: string }[]): string {
+    if (!messages || messages.length === 0) return 'Unknown';
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) return 'Unknown';
+    if (/[\u0600-\u06FF]/.test(lastUserMsg.content)) return 'Arabic';
+    if (/[\u0900-\u097F]/.test(lastUserMsg.content)) return 'Hindi';
+    return 'English';
+}
 
 export default function ConversationsPage() {
-    const [selectedId, setSelectedId] = useState<string | null>('1');
-    const selectedConversation = conversations.find(c => c.id === selectedId) || null;
+    const { user } = useAuth();
+    const [conversations, setConversations] = useState<any[]>([]);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedMessages, setSelectedMessages] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [sending, setSending] = useState(false);
 
-    const handleSendMessage = (text: string) => {
-        console.log('Send message:', text);
+    // Real-time listener for conversations list
+    useEffect(() => {
+        if (!user?.businessId || !db) {
+            setLoading(false);
+            return;
+        }
+
+        const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
+        const q = query(convsRef, orderBy('lastMessageAt', 'desc'));
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                const convs = snapshot.docs.map((d) => ({
+                    id: d.id,
+                    ...d.data(),
+                    timestamp:
+                        d.data().lastMessageAt?.toDate?.()?.toISOString() ||
+                        new Date().toISOString(),
+                    lastMessage:
+                        d.data().messages?.slice(-1)?.[0]?.content || 'No messages yet',
+                    unread: 0,
+                    language: detectLanguageFromMessages(d.data().messages || []),
+                }));
+                setConversations(convs);
+                setLoading(false);
+            },
+            (err) => {
+                console.error('Conversations listener error:', err);
+                setLoading(false);
+            }
+        );
+
+        return () => unsubscribe();
+    }, [user?.businessId]);
+
+    // When a conversation is selected, extract its messages
+    useEffect(() => {
+        if (!selectedId) {
+            setSelectedMessages([]);
+            return;
+        }
+        const conv = conversations.find((c) => c.id === selectedId);
+        if (conv?.messages) {
+            setSelectedMessages(
+                conv.messages.map((m: any, i: number) => ({
+                    id: String(i),
+                    role: m.role === 'model' ? 'assistant' : m.role,
+                    content: m.content,
+                    timestamp:
+                        m.timestamp?.toDate?.()?.toISOString() ||
+                        new Date().toISOString(),
+                }))
+            );
+        } else {
+            setSelectedMessages([]);
+        }
+    }, [selectedId, conversations]);
+
+    // Send a human reply (take over)
+    const handleSendMessage = async (text: string) => {
+        if (!text.trim() || !selectedId || !user?.businessId || !db) return;
+        setSending(true);
+
+        try {
+            const conv = conversations.find((c) => c.id === selectedId);
+            if (!conv?.customerPhone) {
+                message.error('No phone number for this conversation');
+                return;
+            }
+
+            // Send via Twilio API
+            const res = await fetch('/api/whatsapp/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: conv.customerPhone,
+                    message: text,
+                    businessId: user.businessId,
+                    conversationId: selectedId,
+                }),
+            });
+
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to send');
+            }
+
+            // Update conversation in Firestore (mark as human-handled)
+            const convRef = doc(
+                db,
+                'businesses',
+                user.businessId,
+                'conversations',
+                selectedId
+            );
+            const existingMessages = conv.messages || [];
+            await updateDoc(convRef, {
+                messages: [
+                    ...existingMessages,
+                    { role: 'model', content: text, timestamp: Timestamp.now() },
+                ],
+                handledBy: 'human',
+                lastMessageAt: Timestamp.now(),
+            });
+
+            message.success('Message sent');
+        } catch (err: any) {
+            console.error('Send error:', err);
+            message.error(err.message || 'Failed to send message');
+        } finally {
+            setSending(false);
+        }
     };
+
+    const selectedConversation =
+        conversations.find((c) => c.id === selectedId) || null;
+
+    if (loading) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 160px)' }}>
+                <Spin size="large" tip="Loading conversations..." />
+            </div>
+        );
+    }
+
+    if (conversations.length === 0) {
+        return (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 160px)' }}>
+                <Empty
+                    description="No conversations yet. Send a WhatsApp message to your Twilio number to get started!"
+                />
+            </div>
+        );
+    }
 
     return (
         <div style={{ display: 'flex', gap: 16, height: 'calc(100vh - 160px)' }}>
