@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { authFetch } from '@/lib/auth-fetch';
 import {
     Card,
     Table,
@@ -80,8 +81,8 @@ export default function KnowledgeBasePage() {
         setLoading(true);
         try {
             const [servicesRes, faqsRes] = await Promise.all([
-                fetch(`/api/business/services?businessId=${businessId}`),
-                fetch(`/api/business/faqs?businessId=${businessId}`)
+                authFetch(`/api/business/services?businessId=${businessId}`),
+                authFetch(`/api/business/faqs?businessId=${businessId}`)
             ]);
 
             if (servicesRes.ok) {
@@ -108,7 +109,7 @@ export default function KnowledgeBasePage() {
                 ? { businessId, serviceId: editingService.id, updates: values }
                 : { businessId, ...values };
 
-            const res = await fetch('/api/business/services', {
+            const res = await authFetch('/api/business/services', {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -133,7 +134,7 @@ export default function KnowledgeBasePage() {
 
     const handleDeleteService = async (service: Service) => {
         try {
-            const res = await fetch('/api/business/services', {
+            const res = await authFetch('/api/business/services', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ businessId, serviceId: service.id }),
@@ -157,7 +158,7 @@ export default function KnowledgeBasePage() {
                 ? { businessId, faqId: editingFaq.id, updates: values }
                 : { businessId, ...values };
 
-            const res = await fetch('/api/business/faqs', {
+            const res = await authFetch('/api/business/faqs', {
                 method,
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body),
@@ -182,7 +183,7 @@ export default function KnowledgeBasePage() {
 
     const handleDeleteFaq = async (faq: FAQ) => {
         try {
-            const res = await fetch('/api/business/faqs', {
+            const res = await authFetch('/api/business/faqs', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ businessId, faqId: faq.id }),

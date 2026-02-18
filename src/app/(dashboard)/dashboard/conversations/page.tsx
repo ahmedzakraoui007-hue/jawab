@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Spin, Empty, message } from 'antd';
 import { useAuth } from '@/lib/auth-context';
+import { authFetch } from '@/lib/auth-fetch';
 import { db } from '@/lib/firebase';
 import {
     collection,
@@ -104,7 +105,7 @@ export default function ConversationsPage() {
             }
 
             // Send via Twilio API
-            const res = await fetch('/api/whatsapp/send', {
+            const res = await authFetch('/api/whatsapp/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
