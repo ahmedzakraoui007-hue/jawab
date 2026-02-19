@@ -74,12 +74,14 @@ export async function middleware(request: NextRequest) {
         );
     }
 
-    // Attach user info to request headers so API routes can read it
-    const response = NextResponse.next();
-    response.headers.set('x-user-uid', payload.sub as string);
-    response.headers.set('x-user-email', (payload.email as string) || '');
+    // Attach user info to REQUEST headers so API routes can read them
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set('x-user-uid', payload.sub as string);
+    requestHeaders.set('x-user-email', (payload.email as string) || '');
 
-    return response;
+    return NextResponse.next({
+        request: { headers: requestHeaders },
+    });
 }
 
 export const config = {

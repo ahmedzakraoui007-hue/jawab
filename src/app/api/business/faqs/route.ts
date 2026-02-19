@@ -16,18 +16,41 @@ interface FAQ {
 }
 
 /**
+ * Resolve the businessId for the authenticated user.
+ * Checks: (1) explicit param/body, (2) user's Firestore doc.
+ */
+async function resolveBusinessId(
+    explicitId: string | null | undefined,
+    request: NextRequest
+): Promise<string | null> {
+    if (explicitId) return explicitId;
+
+    // Look up from user doc using uid from middleware
+    const uid = request.headers.get('x-user-uid');
+    if (!uid) return null;
+
+    try {
+        const userDoc = await adminDb.collection('users').doc(uid).get();
+        return userDoc.data()?.businessId || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
  * GET /api/business/faqs?businessId=xxx
  * List all FAQs for a business
  */
 export async function GET(request: NextRequest) {
-    const businessId = request.nextUrl.searchParams.get('businessId');
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const explicitId = request.nextUrl.searchParams.get('businessId');
+    const businessId = await resolveBusinessId(explicitId, request);
 
     if (!businessId) {
         return NextResponse.json({ error: 'businessId required' }, { status: 400 });
-    }
-
-    if (!isAdminConfigured) {
-        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     try {
@@ -51,7 +74,7 @@ export async function GET(request: NextRequest) {
             active: f.active !== false,
         }));
 
-        return NextResponse.json({ faqs });
+        return NextResponse.json({ faqs, businessId });
     } catch (error) {
         console.error('[FAQs API] Error:', error);
         return NextResponse.json({ error: 'Failed to fetch FAQs' }, { status: 500 });
@@ -61,12 +84,14 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/business/faqs
  * Add a new FAQ
- * Body: { businessId, question, questionAr?, answer, answerAr?, category?, keywords? }
+ * Body: { businessId?, question, questionAr?, answer, answerAr?, category?, keywords? }
  */
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { businessId, question, questionAr, answer, answerAr, category, keywords } = body;
+        const { question, questionAr, answer, answerAr, category, keywords } = body;
+
+        const businessId = await resolveBusinessId(body.businessId, request);
 
         if (!businessId || !question || !answer) {
             return NextResponse.json(
@@ -118,12 +143,14 @@ export async function POST(request: NextRequest) {
 /**
  * PUT /api/business/faqs
  * Update a FAQ
- * Body: { businessId, faqId, updates: { question?, answer?, etc } }
+ * Body: { businessId?, faqId, updates: { question?, answer?, etc } }
  */
 export async function PUT(request: NextRequest) {
     try {
         const body = await request.json();
-        const { businessId, faqId, updates } = body;
+        const { faqId, updates } = body;
+
+        const businessId = await resolveBusinessId(body.businessId, request);
 
         if (!businessId || !faqId || !updates) {
             return NextResponse.json(
@@ -172,12 +199,14 @@ export async function PUT(request: NextRequest) {
 /**
  * DELETE /api/business/faqs
  * Delete a FAQ
- * Body: { businessId, faqId }
+ * Body: { businessId?, faqId }
  */
 export async function DELETE(request: NextRequest) {
     try {
         const body = await request.json();
-        const { businessId, faqId } = body;
+        const { faqId } = body;
+
+        const businessId = await resolveBusinessId(body.businessId, request);
 
         if (!businessId || !faqId) {
             return NextResponse.json(
