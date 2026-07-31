@@ -384,20 +384,14 @@ function LoginContent() {
 
 export default function LoginPage() {
     return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-black/[0.96] antialiased bg-grid-white/[0.02] relative overflow-hidden">
-            {/* Background Decorations */}
-            <div className="absolute top-0 left-0 w-full h-full w-full bg-black/[0.96] antialiased bg-grid-white/[0.02] z-0 pointer-events-none" />
-            <div className="absolute pointer-events-none inset-0 flex items-center justify-center bg-black [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)] z-0"></div>
-
-            <div className="relative w-full max-w-md z-10">
-                <Suspense fallback={
-                    <div className="flex items-center justify-center w-full min-h-[500px] bg-neutral-900/50 backdrop-blur-xl rounded-2xl shadow-xl border border-white/10">
-                        <Loader2 className="w-8 h-8 animate-spin text-white" />
-                    </div>
-                }>
-                    <LoginContent />
-                </Suspense>
-            </div>
+        <div className="w-full max-w-md mx-auto">
+            <Suspense fallback={
+                <div className="flex items-center justify-center w-full min-h-[500px] bg-neutral-900/50 backdrop-blur-xl rounded-2xl shadow-xl border border-white/10">
+                    <Loader2 className="w-8 h-8 animate-spin text-white" />
+                </div>
+            }>
+                <LoginContent />
+            </Suspense>
         </div>
     );
 }

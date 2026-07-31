@@ -176,12 +176,7 @@ export default function SignupPage() {
     const passwordStrength = getPasswordStrength();
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-6 py-12 bg-black/[0.96] antialiased bg-grid-white/[0.02] relative overflow-hidden">
-            {/* Background Decorations */}
-            <div className="absolute top-0 left-0 w-full h-full w-full bg-black/[0.96] antialiased bg-grid-white/[0.02] z-0 pointer-events-none" />
-            <div className="absolute pointer-events-none inset-0 flex items-center justify-center bg-black [mask-image:radial-gradient(ellipse_at_center,transparent_20%,black)] z-0"></div>
-
-            <div className="w-full max-w-md relative z-10">
+        <div className="w-full max-w-md mx-auto">
                 {/* Header */}
                 <div className="text-center mb-8">
                     <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
@@ -488,7 +483,6 @@ export default function SignupPage() {
                         </Link>
                     </p>
                 </div>
-            </div>
         </div>
     );
 }
