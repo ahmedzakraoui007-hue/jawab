@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { ShieldCheck, Zap, Globe2 } from 'lucide-react';
+import { LogoMark } from '@/components/marketing/logo';
 
 const highlights = [
     { icon: Zap, text: 'Live in under 10 minutes — no developers needed' },
@@ -19,10 +20,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
                 <div className="absolute -top-32 -left-32 w-96 h-96 bg-blue-600/20 blur-3xl rounded-full animate-glow-pulse" />
                 <div className="absolute -bottom-32 -right-16 w-80 h-80 bg-indigo-600/10 blur-3xl rounded-full" />
 
-                <Link href="/" className="relative z-10 flex items-center gap-2">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg shadow-blue-900/20">
-                        <span className="text-base font-bold text-white">ج</span>
-                    </div>
+                <Link href="/" className="relative z-10 flex items-center gap-2.5">
+                    <LogoMark status />
                     <span className="text-lg font-bold text-white tracking-tight">Jawab</span>
                 </Link>
 

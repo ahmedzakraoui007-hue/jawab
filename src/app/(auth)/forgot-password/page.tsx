@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Mail, ArrowRight, ArrowLeft, Loader2, MailCheck } from 'lucide-react';
+import { LogoMark } from '@/components/marketing/logo';
 
 export default function ForgotPasswordPage() {
     const { resetPassword, error, clearError } = useAuth();
@@ -34,9 +35,7 @@ export default function ForgotPasswordPage() {
         <div className="w-full max-w-md mx-auto">
             <div className="text-center mb-8">
                 <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg shadow-blue-900/20">
-                        <span className="text-lg font-bold text-white">ج</span>
-                    </div>
+                    <LogoMark size="lg" status />
                 </Link>
                 <h1 className="text-2xl font-bold text-white mb-2">Reset your password</h1>
                 <p className="text-neutral-400">We&apos;ll email you a link to get back in.</p>

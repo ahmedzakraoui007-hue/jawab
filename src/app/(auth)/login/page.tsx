@@ -15,6 +15,7 @@ import {
     Loader2,
     Check,
 } from 'lucide-react';
+import { LogoMark } from '@/components/marketing/logo';
 
 type AuthMethod = 'email' | 'phone';
 
@@ -129,9 +130,7 @@ function LoginContent() {
             {/* Header */}
             <div className="text-center mb-8">
                 <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg shadow-blue-900/20">
-                        <span className="text-lg font-bold text-white">ج</span>
-                    </div>
+                    <LogoMark size="lg" status />
                 </Link>
                 <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>
                 <p className="text-neutral-400">Sign in to your Jawab account</p>

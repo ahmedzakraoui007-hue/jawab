@@ -26,6 +26,7 @@ import { Reveal, RevealGroup, RevealItem } from "@/components/marketing/reveal";
 import { Counter } from "@/components/marketing/counter";
 import { PricingToggle } from "@/components/marketing/pricing-toggle";
 import { FaqAccordion } from "@/components/marketing/faq-accordion";
+import { LogoMark } from "@/components/marketing/logo";
 
 const testimonials = [
   {
@@ -119,7 +120,7 @@ export default function Home() {
             </Reveal>
 
             <Reveal delay={0.05}>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-neutral-50 to-neutral-400 pb-4 text-glow">
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-b from-white to-neutral-300 pb-4 text-glow">
                 Your AI Employee <br /> that never sleeps.
               </h1>
             </Reveal>
@@ -416,8 +417,8 @@ export default function Home() {
         <div className="container mx-auto px-4">
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-10 pb-12">
             <div className="lg:col-span-2">
-              <Link href="/" className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white">ج</div>
+              <Link href="/" className="flex items-center gap-2.5 mb-4">
+                <LogoMark status />
                 <span className="text-xl font-bold text-white tracking-tight">Jawab</span>
               </Link>
               <p className="text-neutral-500 text-sm max-w-xs leading-relaxed">

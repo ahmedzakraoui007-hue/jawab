@@ -74,6 +74,11 @@
   }
 }
 
+/* Everything below is layered as `base` so Tailwind utility classes
+   (text-white, text-transparent, text-4xl, etc.) always win over it —
+   without a layer, this plain CSS would beat utilities regardless of
+   specificity, since Tailwind's own utilities live inside @layer utilities. */
+@layer base {
 
 /* ============================================
    JAWAB - Professional Design System
@@ -1217,3 +1222,5 @@ h4 {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--gray-400);
 }
+
+} /* end @layer base */

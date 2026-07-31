@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
+import { LogoMark } from "./logo";
 
 const LINKS = [
     { href: "#features", label: "Features" },
@@ -38,10 +39,8 @@ export function Navbar() {
             }`}
         >
             <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2 group" onClick={() => setOpen(false)}>
-                    <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-white transition-transform group-hover:scale-105">
-                        ج
-                    </div>
+                <Link href="/" className="flex items-center gap-2.5 group" onClick={() => setOpen(false)}>
+                    <LogoMark status className="transition-transform group-hover:scale-105" />
                     <span className="text-xl font-bold text-white tracking-tight">Jawab</span>
                 </Link>
 
