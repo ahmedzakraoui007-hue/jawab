@@ -1,5 +1,7 @@
 "use client";
 
+import { useI18n } from "@/i18n/context";
+
 export function PricingToggle({
     annual,
     onChange,
@@ -7,6 +9,8 @@ export function PricingToggle({
     annual: boolean;
     onChange: (annual: boolean) => void;
 }) {
+    const { dict } = useI18n();
+
     return (
         <div className="inline-flex items-center gap-3 p-1.5 rounded-full border border-white/10 bg-neutral-900/60">
             <button
@@ -15,7 +19,7 @@ export function PricingToggle({
                     !annual ? "bg-white text-black" : "text-neutral-400 hover:text-white"
                 }`}
             >
-                Monthly
+                {dict.pricing.monthly}
             </button>
             <button
                 onClick={() => onChange(true)}
@@ -23,13 +27,13 @@ export function PricingToggle({
                     annual ? "bg-white text-black" : "text-neutral-400 hover:text-white"
                 }`}
             >
-                Annual
+                {dict.pricing.annual}
                 <span
                     className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
                         annual ? "bg-emerald-500 text-white" : "bg-emerald-500/15 text-emerald-400"
                     }`}
                 >
-                    Save 20%
+                    {dict.pricing.save}
                 </span>
             </button>
         </div>

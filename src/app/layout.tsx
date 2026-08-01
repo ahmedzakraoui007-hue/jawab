@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 import { Providers } from "./providers";
+import { dirForLocale, isLocale, defaultLocale } from "@/i18n/config";
 
 // Using Inter as primary font (more stable with Turbopack)
 // IBM Plex Sans Arabic is loaded via CSS for Arabic text
@@ -23,13 +25,17 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const headerLocale = (await headers()).get('x-locale');
+  const locale = isLocale(headerLocale || '') ? headerLocale! : defaultLocale;
+  const dir = dirForLocale(locale as Parameters<typeof dirForLocale>[0]);
+
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang={locale} dir={dir} data-scroll-behavior="smooth" className={`${inter.variable} ${locale === 'ar' ? 'font-ar' : 'font-en'}`}>
       <head>
         {/* Load IBM Plex Sans Arabic via Google Fonts CDN for Arabic support */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />

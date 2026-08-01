@@ -5,9 +5,12 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Mail, ArrowRight, ArrowLeft, Loader2, MailCheck } from 'lucide-react';
 import { LogoMark } from '@/components/marketing/logo';
+import { useI18n, useLocalizedHref } from '@/i18n/context';
 
 export default function ForgotPasswordPage() {
     const { resetPassword, error, clearError } = useAuth();
+    const { dict } = useI18n();
+    const href = useLocalizedHref();
     const [email, setEmail] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [localError, setLocalError] = useState('');
@@ -34,11 +37,11 @@ export default function ForgotPasswordPage() {
     return (
         <div className="w-full max-w-md mx-auto">
             <div className="text-center mb-8">
-                <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
+                <Link href={href('/')} className="inline-flex items-center gap-2 mb-8 group">
                     <LogoMark size="lg" status />
                 </Link>
-                <h1 className="text-2xl font-bold text-white mb-2">Reset your password</h1>
-                <p className="text-neutral-400">We&apos;ll email you a link to get back in.</p>
+                <h1 className="text-2xl font-bold text-white mb-2">{dict.forgotPassword.title}</h1>
+                <p className="text-neutral-400">{dict.forgotPassword.subtitle}</p>
             </div>
 
             <div className="bg-neutral-900/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 p-8">
@@ -47,15 +50,17 @@ export default function ForgotPasswordPage() {
                         <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-5">
                             <MailCheck className="w-7 h-7 text-emerald-400" />
                         </div>
-                        <h2 className="text-white font-semibold text-lg mb-2">Check your inbox</h2>
+                        <h2 className="text-white font-semibold text-lg mb-2">{dict.forgotPassword.checkInboxTitle}</h2>
                         <p className="text-neutral-400 text-sm leading-relaxed mb-8">
-                            If an account exists for <span className="text-white font-medium">{email}</span>, a password reset link is on its way.
+                            {dict.forgotPassword.checkInboxBody.split('{email}')[0]}
+                            <span className="text-white font-medium">{email}</span>
+                            {dict.forgotPassword.checkInboxBody.split('{email}')[1]}
                         </p>
                         <button
                             onClick={() => setSent(false)}
                             className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-medium"
                         >
-                            Use a different email
+                            {dict.forgotPassword.useDifferentEmail}
                         </button>
                     </div>
                 ) : (
@@ -68,15 +73,15 @@ export default function ForgotPasswordPage() {
                         )}
 
                         <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Email</label>
+                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">{dict.forgotPassword.emailLabel}</label>
                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                                <Mail className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
                                 <input
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="you@business.com"
-                                    className="w-full pl-10 pr-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                                    placeholder={dict.forgotPassword.emailPlaceholder}
+                                    className="w-full ps-10 pe-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                                     required
                                 />
                             </div>
@@ -91,8 +96,8 @@ export default function ForgotPasswordPage() {
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>
-                                    Send reset link
-                                    <ArrowRight className="w-5 h-5" />
+                                    {dict.forgotPassword.sendResetLink}
+                                    <ArrowRight className="w-5 h-5 rtl:rotate-180" />
                                 </>
                             )}
                         </button>
@@ -100,11 +105,11 @@ export default function ForgotPasswordPage() {
                 )}
 
                 <Link
-                    href="/login"
+                    href={href('/login')}
                     className="mt-8 flex items-center justify-center gap-2 text-sm text-neutral-500 hover:text-neutral-300 transition-colors"
                 >
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to login
+                    <ArrowLeft className="w-4 h-4 rtl:rotate-180" />
+                    {dict.forgotPassword.backToLogin}
                 </Link>
             </div>
         </div>

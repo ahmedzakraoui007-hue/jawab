@@ -56,7 +56,7 @@ export function ChatMockup() {
     }, []);
 
     return (
-        <div className="relative w-full max-w-sm mx-auto">
+        <div dir="ltr" className="relative w-full max-w-sm mx-auto">
             <div className="absolute -inset-6 bg-blue-600/20 blur-3xl rounded-full animate-glow-pulse" />
 
             <div className="relative rounded-[2rem] border border-white/10 bg-neutral-900/80 backdrop-blur-xl shadow-2xl shadow-black/50 overflow-hidden animate-float">

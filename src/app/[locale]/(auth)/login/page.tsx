@@ -7,22 +7,23 @@ import { useAuth } from '@/lib/auth-context';
 import {
     Mail,
     Lock,
-    ArrowLeft,
     Eye,
     EyeOff,
     Phone,
     ArrowRight,
     Loader2,
-    Check,
 } from 'lucide-react';
 import { LogoMark } from '@/components/marketing/logo';
+import { useI18n, useLocalizedHref } from '@/i18n/context';
 
 type AuthMethod = 'email' | 'phone';
 
 function LoginContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const redirect = searchParams.get('redirect') || '/dashboard';
+    const { dict } = useI18n();
+    const href = useLocalizedHref();
+    const redirect = searchParams.get('redirect') || href('/dashboard');
 
     const {
         user,
@@ -45,14 +46,12 @@ function LoginContent() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [localError, setLocalError] = useState('');
 
-    // Redirect if already logged in
     useEffect(() => {
         if (user && !loading) {
             router.push(redirect);
         }
     }, [user, loading, router, redirect]);
 
-    // Clear errors when switching methods
     useEffect(() => {
         clearError();
         setLocalError('');
@@ -89,7 +88,7 @@ function LoginContent() {
 
     const handleSendOTP = async () => {
         if (!phone) {
-            setLocalError('Please enter your phone number');
+            setLocalError(dict.validation.phoneRequired);
             return;
         }
 
@@ -97,7 +96,6 @@ function LoginContent() {
         setLocalError('');
 
         try {
-            // Format phone number if needed
             const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`;
             await sendPhoneOTP(formattedPhone);
             setOtpSent(true);
@@ -129,11 +127,11 @@ function LoginContent() {
         <div className="w-full max-w-md">
             {/* Header */}
             <div className="text-center mb-8">
-                <Link href="/" className="inline-flex items-center gap-2 mb-8 group">
+                <Link href={href('/')} className="inline-flex items-center gap-2 mb-8 group">
                     <LogoMark size="lg" status />
                 </Link>
-                <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>
-                <p className="text-neutral-400">Sign in to your Jawab account</p>
+                <h1 className="text-2xl font-bold text-white mb-2">{dict.login.title}</h1>
+                <p className="text-neutral-400">{dict.login.subtitle}</p>
             </div>
 
             {/* Auth Card */}
@@ -148,7 +146,7 @@ function LoginContent() {
                             }`}
                     >
                         <Mail className="w-4 h-4" />
-                        Email
+                        {dict.login.emailTab}
                     </button>
                     <button
                         onClick={() => { setAuthMethod('phone'); setOtpSent(false); }}
@@ -158,7 +156,7 @@ function LoginContent() {
                             }`}
                     >
                         <Phone className="w-4 h-4" />
-                        Phone
+                        {dict.login.phoneTab}
                     </button>
                 </div>
 
@@ -174,36 +172,36 @@ function LoginContent() {
                 {authMethod === 'email' && (
                     <form onSubmit={handleEmailLogin} className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Email</label>
+                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">{dict.login.emailLabel}</label>
                             <div className="relative">
-                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                                <Mail className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
                                 <input
                                     type="email"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="you@business.com"
-                                    className="w-full pl-10 pr-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                                    placeholder={dict.login.emailPlaceholder}
+                                    className="w-full ps-10 pe-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                                     required
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Password</label>
+                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">{dict.login.passwordLabel}</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                                <Lock className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
                                 <input
                                     type={showPassword ? 'text' : 'password'}
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
-                                    placeholder="Enter your password"
-                                    className="w-full pl-10 pr-12 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                                    placeholder={dict.login.passwordPlaceholder}
+                                    className="w-full ps-10 pe-12 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
                                     required
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors"
+                                    className="absolute end-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300 transition-colors"
                                 >
                                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                                 </button>
@@ -216,10 +214,10 @@ function LoginContent() {
                                     type="checkbox"
                                     className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-blue-600 focus:ring-blue-500"
                                 />
-                                Remember me
+                                {dict.login.rememberMe}
                             </label>
-                            <Link href="/forgot-password" className="text-blue-400 hover:text-blue-300 hover:underline font-medium">
-                                Forgot password?
+                            <Link href={href('/forgot-password')} className="text-blue-400 hover:text-blue-300 hover:underline font-medium">
+                                {dict.login.forgotPassword}
                             </Link>
                         </div>
 
@@ -232,8 +230,8 @@ function LoginContent() {
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>
-                                    Sign in
-                                    <ArrowRight className="w-5 h-5" />
+                                    {dict.login.signIn}
+                                    <ArrowRight className="w-5 h-5 rtl:rotate-180" />
                                 </>
                             )}
                         </button>
@@ -244,18 +242,19 @@ function LoginContent() {
                 {authMethod === 'phone' && !otpSent && (
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">Phone Number</label>
+                            <label className="block text-sm font-medium text-neutral-300 mb-1.5">{dict.login.phoneLabel}</label>
                             <div className="relative">
-                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                                <Phone className="absolute start-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
                                 <input
                                     type="tel"
                                     value={phone}
                                     onChange={(e) => setPhone(e.target.value)}
-                                    placeholder="+971 50 123 4567"
-                                    className="w-full pl-10 pr-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all"
+                                    placeholder={dict.login.phonePlaceholder}
+                                    dir="ltr"
+                                    className="w-full ps-10 pe-4 py-3 bg-neutral-950 border border-neutral-800 rounded-xl text-white placeholder:text-neutral-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all text-start"
                                 />
                             </div>
-                            <p className="mt-2 text-xs text-neutral-500">Include country code (e.g., +971 for UAE)</p>
+                            <p className="mt-2 text-xs text-neutral-500">{dict.login.phoneHint}</p>
                         </div>
 
                         <button
@@ -268,8 +267,8 @@ function LoginContent() {
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>
-                                    Send OTP
-                                    <ArrowRight className="w-5 h-5" />
+                                    {dict.login.sendOtp}
+                                    <ArrowRight className="w-5 h-5 rtl:rotate-180" />
                                 </>
                             )}
                         </button>
@@ -281,24 +280,25 @@ function LoginContent() {
                     <form onSubmit={handleVerifyOTP} className="space-y-6">
                         <div className="text-center">
                             <p className="text-neutral-400 text-sm mb-1">
-                                We sent a code to <span className="text-white font-medium">{phone}</span>
+                                {dict.login.otpSentTo} <span dir="ltr" className="text-white font-medium">{phone}</span>
                             </p>
                             <button
                                 type="button"
                                 onClick={() => setOtpSent(false)}
                                 className="text-sm text-blue-400 hover:text-blue-300 hover:underline"
                             >
-                                Change number
+                                {dict.login.changeNumber}
                             </button>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-neutral-300 mb-2 text-center">Enter 6-digit code</label>
+                            <label className="block text-sm font-medium text-neutral-300 mb-2 text-center">{dict.login.otpLabel}</label>
                             <input
                                 type="text"
                                 value={otp}
                                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                 placeholder="000000"
+                                dir="ltr"
                                 className="w-full text-center text-3xl tracking-[0.5em] font-mono py-3 bg-transparent border-b-2 border-neutral-700 text-white focus:border-blue-500 focus:outline-none transition-colors placeholder:text-neutral-800"
                                 maxLength={6}
                                 required
@@ -314,8 +314,8 @@ function LoginContent() {
                                 <Loader2 className="w-5 h-5 animate-spin" />
                             ) : (
                                 <>
-                                    Verify & Sign in
-                                    <ArrowRight className="w-5 h-5" />
+                                    {dict.login.verifyAndSignIn}
+                                    <ArrowRight className="w-5 h-5 rtl:rotate-180" />
                                 </>
                             )}
                         </button>
@@ -326,15 +326,15 @@ function LoginContent() {
                             disabled={isSubmitting}
                             className="w-full text-center text-sm text-neutral-500 hover:text-neutral-400 transition-colors"
                         >
-                            Didn&apos;t receive code? Resend
+                            {dict.login.resendCode}
                         </button>
                     </form>
                 )}
 
                 {/* Divider */}
-                <div className="lex items-center gap-4 my-8 flex">
+                <div className="items-center gap-4 my-8 flex">
                     <div className="flex-1 h-px bg-white/10" />
-                    <span className="text-sm text-neutral-500 px-2">or continue with</span>
+                    <span className="text-sm text-neutral-500 px-2">{dict.login.orContinueWith}</span>
                     <div className="flex-1 h-px bg-white/10" />
                 </div>
 
@@ -362,20 +362,20 @@ function LoginContent() {
                             d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                         />
                     </svg>
-                    Google
+                    {dict.login.google}
                 </button>
 
                 {/* Sign Up Link */}
                 <p className="text-center text-neutral-500 mt-8">
-                    Don&apos;t have an account?{' '}
-                    <Link href="/signup" className="text-blue-400 hover:text-blue-300 hover:underline font-semibold">
-                        Sign up free
+                    {dict.login.noAccount}{' '}
+                    <Link href={href('/signup')} className="text-blue-400 hover:text-blue-300 hover:underline font-semibold">
+                        {dict.login.signUpFree}
                     </Link>
                 </p>
             </div>
 
             <p className="text-center text-xs text-neutral-600 mt-8">
-                By signing in, you agree to our Terms of Service and Privacy Policy.
+                {dict.login.terms}
             </p>
         </div>
     );

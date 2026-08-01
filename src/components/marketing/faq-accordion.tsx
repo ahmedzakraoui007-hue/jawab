@@ -3,42 +3,21 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus } from "lucide-react";
-
-const FAQS = [
-    {
-        q: "Does Jawab really speak Arabic and English fluently?",
-        a: "Yes. Jawab detects the customer's language automatically and replies naturally in Arabic, English, or Gulf dialects — no configuration needed.",
-    },
-    {
-        q: "How long does setup take?",
-        a: "Most businesses are live in under 10 minutes. Connect your WhatsApp Business number, add a few FAQs, and Jawab starts handling conversations immediately.",
-    },
-    {
-        q: "Can it actually book real appointments?",
-        a: "Yes — Jawab syncs directly with Google Calendar (and Fresha, coming soon) to check availability and confirm bookings in real time, no double-bookings.",
-    },
-    {
-        q: "What happens if the AI can't answer something?",
-        a: "Jawab hands the conversation off to a human team member instantly, with full context, so nothing falls through the cracks.",
-    },
-    {
-        q: "Is there a contract or can I cancel anytime?",
-        a: "No contracts. Plans are billed monthly or annually, and you can upgrade, downgrade, or cancel whenever you like.",
-    },
-];
+import { useI18n } from "@/i18n/context";
 
 export function FaqAccordion() {
+    const { dict } = useI18n();
     const [openIndex, setOpenIndex] = useState<number | null>(0);
 
     return (
         <div className="max-w-3xl mx-auto divide-y divide-white/10 border-y border-white/10">
-            {FAQS.map((item, idx) => {
+            {dict.faq.items.map((item, idx) => {
                 const isOpen = openIndex === idx;
                 return (
                     <div key={item.q}>
                         <button
                             onClick={() => setOpenIndex(isOpen ? null : idx)}
-                            className="w-full flex items-center justify-between gap-4 py-6 text-left group"
+                            className="w-full flex items-center justify-between gap-4 py-6 text-start group"
                         >
                             <span className="text-base md:text-lg font-medium text-white group-hover:text-blue-400 transition-colors">
                                 {item.q}
@@ -60,7 +39,7 @@ export function FaqAccordion() {
                                     transition={{ duration: 0.25, ease: "easeInOut" }}
                                     className="overflow-hidden"
                                 >
-                                    <p className="pb-6 text-neutral-400 leading-relaxed pr-12">{item.a}</p>
+                                    <p className="pb-6 text-neutral-400 leading-relaxed pe-12">{item.a}</p>
                                 </motion.div>
                             )}
                         </AnimatePresence>

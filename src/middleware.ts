@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { locales, defaultLocale, type Locale } from '@/i18n/config';
 
 // Google's public key endpoint for Firebase Auth tokens
 const JWKS = createRemoteJWKSet(
@@ -15,6 +16,10 @@ const PUBLIC_API_ROUTES = [
     '/api/auth',
     '/api/public',
 ];
+
+// Routes that live outside the [locale] segment — the authenticated app
+// stays English/LTR only for now, so it's excluded from locale redirects.
+const NON_LOCALIZED_PREFIXES = ['/dashboard', '/onboarding', '/api'];
 
 /**
  * Verify a Firebase Auth ID token using jose (Edge Runtime compatible).
@@ -39,14 +44,7 @@ async function verifyFirebaseToken(token: string) {
     }
 }
 
-export async function middleware(request: NextRequest) {
-    const { pathname } = request.nextUrl;
-
-    // Only run on /api routes
-    if (!pathname.startsWith('/api')) {
-        return NextResponse.next();
-    }
-
+async function handleApiAuth(request: NextRequest, pathname: string) {
     // Skip public routes (webhooks, etc.)
     if (PUBLIC_API_ROUTES.some(route => pathname.startsWith(route))) {
         return NextResponse.next();
@@ -84,6 +82,49 @@ export async function middleware(request: NextRequest) {
     });
 }
 
+function detectLocale(request: NextRequest): Locale {
+    const cookieLocale = request.cookies.get('NEXT_LOCALE')?.value;
+    if (cookieLocale && locales.includes(cookieLocale as Locale)) {
+        return cookieLocale as Locale;
+    }
+
+    const acceptLanguage = request.headers.get('accept-language') || '';
+    if (acceptLanguage.toLowerCase().includes('ar')) {
+        return 'ar';
+    }
+
+    return defaultLocale;
+}
+
+export async function middleware(request: NextRequest) {
+    const { pathname } = request.nextUrl;
+
+    // API auth logic, unchanged
+    if (pathname.startsWith('/api')) {
+        return handleApiAuth(request, pathname);
+    }
+
+    // Authenticated app stays outside locale routing
+    if (NON_LOCALIZED_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))) {
+        return NextResponse.next();
+    }
+
+    // Already locale-prefixed — tag the request so the root layout can set
+    // <html lang/dir> without needing the [locale] param itself.
+    const matchedLocale = locales.find(l => pathname === `/${l}` || pathname.startsWith(`/${l}/`));
+    if (matchedLocale) {
+        const response = NextResponse.next();
+        response.headers.set('x-locale', matchedLocale);
+        return response;
+    }
+
+    // No locale in the URL — redirect to the detected/preferred one
+    const locale = detectLocale(request);
+    const url = request.nextUrl.clone();
+    url.pathname = `/${locale}${pathname === '/' ? '' : pathname}`;
+    return NextResponse.redirect(url);
+}
+
 export const config = {
-    matcher: '/api/:path*',
+    matcher: ['/((?!_next|favicon.ico|.*\\..*).*)'],
 };

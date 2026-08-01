@@ -5,18 +5,22 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { LogoMark } from "./logo";
-
-const LINKS = [
-    { href: "#features", label: "Features" },
-    { href: "#how-it-works", label: "How it works" },
-    { href: "#testimonials", label: "Testimonials" },
-    { href: "#pricing", label: "Pricing" },
-    { href: "#faq", label: "FAQ" },
-];
+import { useI18n, useLocalizedHref } from "@/i18n/context";
+import { LanguageSwitcher } from "@/i18n/language-switcher";
 
 export function Navbar() {
+    const { dict } = useI18n();
+    const href = useLocalizedHref();
     const [scrolled, setScrolled] = useState(false);
     const [open, setOpen] = useState(false);
+
+    const LINKS = [
+        { anchor: "#features", label: dict.nav.features },
+        { anchor: "#how-it-works", label: dict.nav.howItWorks },
+        { anchor: "#testimonials", label: dict.nav.testimonials },
+        { anchor: "#pricing", label: dict.nav.pricing },
+        { anchor: "#faq", label: dict.nav.faq },
+    ];
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 8);
@@ -39,28 +43,29 @@ export function Navbar() {
             }`}
         >
             <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-                <Link href="/" className="flex items-center gap-2.5 group" onClick={() => setOpen(false)}>
+                <Link href={href('/')} className="flex items-center gap-2.5 group" onClick={() => setOpen(false)}>
                     <LogoMark status className="transition-transform group-hover:scale-105" />
                     <span className="text-xl font-bold text-white tracking-tight">Jawab</span>
                 </Link>
 
                 <div className="hidden md:flex gap-8 text-sm font-medium text-neutral-300">
                     {LINKS.map((link) => (
-                        <a key={link.href} href={link.href} className="hover:text-white transition-colors">
+                        <a key={link.anchor} href={link.anchor} className="hover:text-white transition-colors">
                             {link.label}
                         </a>
                     ))}
                 </div>
 
                 <div className="hidden md:flex gap-4 items-center">
-                    <Link href="/login" className="text-neutral-300 hover:text-white text-sm font-medium px-4 py-2">
-                        Login
+                    <LanguageSwitcher />
+                    <Link href={href('/login')} className="text-neutral-300 hover:text-white text-sm font-medium px-4 py-2">
+                        {dict.nav.login}
                     </Link>
                     <Link
-                        href="/signup"
+                        href={href('/signup')}
                         className="bg-white text-black text-sm font-medium px-4 py-2 rounded-full hover:bg-neutral-200 transition-colors"
                     >
-                        Get Started
+                        {dict.nav.getStarted}
                     </Link>
                 </div>
 
@@ -85,28 +90,31 @@ export function Navbar() {
                         <div className="container mx-auto px-6 py-6 flex flex-col gap-1">
                             {LINKS.map((link) => (
                                 <a
-                                    key={link.href}
-                                    href={link.href}
+                                    key={link.anchor}
+                                    href={link.anchor}
                                     onClick={() => setOpen(false)}
                                     className="py-3 text-neutral-300 hover:text-white text-base font-medium border-b border-white/5"
                                 >
                                     {link.label}
                                 </a>
                             ))}
+                            <div className="flex justify-center mt-4">
+                                <LanguageSwitcher />
+                            </div>
                             <div className="flex flex-col gap-3 mt-5">
                                 <Link
-                                    href="/login"
+                                    href={href('/login')}
                                     onClick={() => setOpen(false)}
                                     className="w-full text-center py-3 rounded-xl border border-white/15 text-white font-medium"
                                 >
-                                    Login
+                                    {dict.nav.login}
                                 </Link>
                                 <Link
-                                    href="/signup"
+                                    href={href('/signup')}
                                     onClick={() => setOpen(false)}
                                     className="w-full text-center py-3 rounded-xl bg-white text-black font-semibold"
                                 >
-                                    Get Started
+                                    {dict.nav.getStarted}
                                 </Link>
                             </div>
                         </div>
