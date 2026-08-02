@@ -52,7 +52,7 @@ export default function SignupPage() {
 
     useEffect(() => {
         if (user && !loading) {
-            router.push(href('/onboarding'));
+            router.push('/onboarding');
         }
     }, [user, loading, router, href]);
 
@@ -96,7 +96,7 @@ export default function SignupPage() {
 
         try {
             await signUpWithEmail(formData.email, formData.password, formData.ownerName);
-            router.push(href('/onboarding'));
+            router.push('/onboarding');
         } catch (err: unknown) {
             setLocalError((err as Error).message);
         } finally {
@@ -115,7 +115,7 @@ export default function SignupPage() {
 
         try {
             await signInWithGoogle();
-            router.push(href('/onboarding'));
+            router.push('/onboarding');
         } catch (err: unknown) {
             setLocalError((err as Error).message);
         } finally {
@@ -154,7 +154,7 @@ export default function SignupPage() {
 
         try {
             await verifyPhoneOTP(otp);
-            router.push(href('/onboarding'));
+            router.push('/onboarding');
         } catch (err: unknown) {
             setLocalError((err as Error).message);
         } finally {

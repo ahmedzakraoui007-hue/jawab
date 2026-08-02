@@ -23,7 +23,7 @@ function LoginContent() {
     const searchParams = useSearchParams();
     const { dict } = useI18n();
     const href = useLocalizedHref();
-    const redirect = searchParams.get('redirect') || href('/dashboard');
+    const redirect = searchParams.get('redirect') || '/dashboard';
 
     const {
         user,

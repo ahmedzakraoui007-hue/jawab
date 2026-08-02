@@ -47,7 +47,7 @@ export function HomeClient() {
         <div className="absolute inset-0 bg-grid-white bg-radial-fade pointer-events-none" />
         <Spotlight className="-top-40 left-0 md:left-60 md:-top-20" fill="white" />
 
-        <div className="px-4 max-w-7xl mx-auto relative z-10 w-full grid lg:grid-cols-2 gap-16 items-center">
+        <div className="px-6 max-w-7xl mx-auto relative z-10 w-full grid lg:grid-cols-2 gap-16 items-center">
           <div className="text-center lg:text-start">
             <Reveal>
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/5 text-xs font-medium text-neutral-300 mb-6">
@@ -116,7 +116,7 @@ export function HomeClient() {
 
       {/* Trust bar */}
       <section className="py-10 border-y border-white/5 bg-neutral-950/60 relative z-20">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6">
           <p className="text-center text-xs uppercase tracking-widest text-neutral-500 mb-6">
             {dict.trustBar.label}
           </p>
@@ -132,7 +132,7 @@ export function HomeClient() {
 
       {/* Features Section (Wobble Cards) */}
       <section id="features" className="py-24 bg-neutral-950 relative z-20">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold text-center text-white mb-4">
               {dict.features.heading} <span className="text-blue-500">{dict.features.headingAccent}</span>
@@ -199,7 +199,7 @@ export function HomeClient() {
 
       {/* How it works */}
       <section id="how-it-works" className="py-24 bg-black relative z-20">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold text-center text-white mb-4">
               {dict.howItWorks.heading} <span className="text-blue-500">{dict.howItWorks.headingAccent}</span>
@@ -246,7 +246,7 @@ export function HomeClient() {
 
       {/* Pricing Section */}
       <section id="pricing" className="py-24 bg-black relative z-30">
-        <div className="container mx-auto px-4 text-center">
+        <div className="container mx-auto px-6 text-center">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold text-center text-white mb-6">
               {dict.pricing.heading} <span className="text-blue-500">{dict.pricing.headingAccent}</span>
@@ -319,7 +319,7 @@ export function HomeClient() {
 
       {/* FAQ */}
       <section id="faq" className="py-24 bg-neutral-950 relative z-20">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6">
           <Reveal>
             <h2 className="text-3xl md:text-5xl font-bold text-center text-white mb-4">
               {dict.faq.heading} <span className="text-blue-500">{dict.faq.headingAccent}</span>
@@ -338,7 +338,7 @@ export function HomeClient() {
       <section className="min-h-[40rem] w-full rounded-md bg-neutral-950 relative flex flex-col items-center justify-center antialiased">
         <div className="max-w-2xl mx-auto p-4 z-10 text-center">
           <Reveal>
-            <h2 className="relative z-10 text-lg md:text-7xl bg-clip-text text-transparent bg-gradient-to-b from-neutral-200 to-neutral-600 text-center font-sans font-bold">
+            <h2 className="relative z-10 text-lg md:text-7xl bg-clip-text text-transparent bg-gradient-to-b from-white to-neutral-400 text-center font-sans font-bold">
               {dict.cta.title}
             </h2>
           </Reveal>
@@ -361,7 +361,7 @@ export function HomeClient() {
 
       {/* Footer */}
       <footer className="pt-16 pb-10 bg-black border-t border-white/10 relative z-20">
-        <div className="container mx-auto px-4">
+        <div className="container mx-auto px-6">
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-10 pb-12">
             <div className="lg:col-span-2">
               <Link href={href('/')} className="flex items-center gap-2.5 mb-4">
