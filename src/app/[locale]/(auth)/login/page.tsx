@@ -375,7 +375,23 @@ function LoginContent() {
             </div>
 
             <p className="text-center text-xs text-neutral-600 mt-8">
-                {dict.login.terms}
+                {(() => {
+                    const [beforeTerms, rest] = dict.login.terms.split('{terms}');
+                    const [betweenTermsAndPrivacy, afterPrivacy] = rest.split('{privacy}');
+                    return (
+                        <>
+                            {beforeTerms}
+                            <Link href={href('/terms')} target="_blank" className="underline hover:text-neutral-400">
+                                {dict.signup.agreeTerms}
+                            </Link>
+                            {betweenTermsAndPrivacy}
+                            <Link href={href('/privacy')} target="_blank" className="underline hover:text-neutral-400">
+                                {dict.signup.agreePrivacy}
+                            </Link>
+                            {afterPrivacy}
+                        </>
+                    );
+                })()}
             </p>
         </div>
     );

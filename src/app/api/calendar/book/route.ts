@@ -2,6 +2,74 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createBookingEvent, cancelBookingEvent, Booking } from '@/lib/google-calendar';
 import { db } from '@/lib/firebase';
 import { doc, getDoc, collection, addDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+
+/**
+ * Resolve the businessId for the authenticated user.
+ * Checks: (1) explicit query param, (2) user's Firestore doc.
+ */
+async function resolveBusinessId(
+    explicitId: string | null | undefined,
+    request: NextRequest
+): Promise<string | null> {
+    if (explicitId) return explicitId;
+
+    const uid = request.headers.get('x-user-uid');
+    if (!uid) return null;
+
+    try {
+        const userDoc = await adminDb.collection('users').doc(uid).get();
+        return userDoc.data()?.businessId || null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * List bookings for a business
+ * GET /api/calendar/book?businessId=xxx
+ */
+export async function GET(request: NextRequest) {
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const explicitId = request.nextUrl.searchParams.get('businessId');
+    const businessId = await resolveBusinessId(explicitId, request);
+
+    if (!businessId) {
+        return NextResponse.json({ error: 'businessId required' }, { status: 400 });
+    }
+
+    try {
+        const snap = await adminDb.collection('bookings').where('businessId', '==', businessId).get();
+
+        const bookings = snap.docs
+            .map((d) => {
+                const data = d.data();
+                return {
+                    id: d.id,
+                    customerName: data.customerName ?? '',
+                    customerPhone: data.customerPhone ?? '',
+                    customerEmail: data.customerEmail ?? null,
+                    service: data.service ?? '',
+                    price: typeof data.price === 'number' ? data.price : 0,
+                    duration: data.serviceDuration ?? 60,
+                    startTime: data.startTime?.toDate?.()?.toISOString() ?? null,
+                    endTime: data.endTime?.toDate?.()?.toISOString() ?? null,
+                    status: (data.status ?? 'confirmed') as Booking['status'],
+                    source: data.createdVia ?? 'dashboard',
+                };
+            })
+            .filter((b) => b.status !== 'cancelled' && b.startTime)
+            .sort((a, b) => (a.startTime as string).localeCompare(b.startTime as string));
+
+        return NextResponse.json({ bookings, businessId });
+    } catch (error) {
+        console.error('[Bookings API] GET error:', error);
+        return NextResponse.json({ error: 'Failed to fetch bookings' }, { status: 500 });
+    }
+}
 
 /**
  * Create a new booking

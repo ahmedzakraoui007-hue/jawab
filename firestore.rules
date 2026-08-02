@@ -27,11 +27,12 @@ service cloud.firestore {
       }
     }
     
-    // Bookings — business members only
+    // Bookings — business members only (scoped by the businessId field on
+    // each document, since bookings is a top-level collection rather than
+    // a subcollection of businesses/{businessId})
     match /bookings/{bookingId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null;
+      allow read, update, delete: if request.auth != null && isBusinessMember(resource.data.businessId);
+      allow create: if request.auth != null && isBusinessMember(request.resource.data.businessId);
     }
   }
 }

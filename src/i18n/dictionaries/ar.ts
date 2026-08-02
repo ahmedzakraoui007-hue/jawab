@@ -84,7 +84,7 @@ export const ar = {
         monthly: 'شهري',
         annual: 'سنوي',
         save: 'وفّر 20%',
-        perMonth: 'درهم/شهرياً',
+        perMonth: '/شهرياً',
         billedMonthly: 'تُدفع شهرياً',
         billedAnnually: 'تُدفع سنوياً',
         noCreditCard: 'لا حاجة لبطاقة ائتمان',
@@ -191,7 +191,7 @@ export const ar = {
         google: 'جوجل',
         noAccount: 'ليس لديك حساب؟',
         signUpFree: 'أنشئ حساباً مجانياً',
-        terms: 'بتسجيل الدخول، فإنك توافق على شروط الخدمة وسياسة الخصوصية الخاصة بنا.',
+        terms: 'بتسجيل الدخول، فإنك توافق على {terms} و{privacy} الخاصة بنا.',
     },
     signup: {
         title: 'أنشئ حسابك',

@@ -310,9 +310,9 @@ export default function SignupPage() {
                             </div>
                             <span className="text-sm text-neutral-400">
                                 {dict.signup.agreeText}{' '}
-                                <a href="#" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreeTerms}</a>
+                                <Link href={href('/terms')} target="_blank" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreeTerms}</Link>
                                 {' '}{dict.signup.agreeAnd}{' '}
-                                <a href="#" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreePrivacy}</a>
+                                <Link href={href('/privacy')} target="_blank" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreePrivacy}</Link>
                             </span>
                         </label>
 
@@ -370,9 +370,9 @@ export default function SignupPage() {
                             </div>
                             <span className="text-sm text-neutral-400">
                                 {dict.signup.agreeText}{' '}
-                                <a href="#" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreeTerms}</a>
+                                <Link href={href('/terms')} target="_blank" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreeTerms}</Link>
                                 {' '}{dict.signup.agreeAnd}{' '}
-                                <a href="#" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreePrivacy}</a>
+                                <Link href={href('/privacy')} target="_blank" className="text-blue-400 hover:text-blue-300 hover:underline">{dict.signup.agreePrivacy}</Link>
                             </span>
                         </label>
 

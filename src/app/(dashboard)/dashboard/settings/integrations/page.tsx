@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
+import { db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import {
     Card,
     Button,
@@ -210,18 +212,21 @@ export default function IntegrationsPage() {
         }
     }, []);
 
-    // TODO: Fetch actual business data from Firestore
+    // Fetch the real business document so connection state reflects reality
     useEffect(() => {
-        // Mock business data for now
-        setBusiness({
-            id: 'demo-business',
-            name: 'Glamour Ladies Salon',
-            meta: null, // Not connected
-            googleCalendar: null, // Not connected
-            whatsappNumber: { number: '+971501234567' },
-            phoneNumber: null,
-        });
-    }, []);
+        async function fetchBusiness() {
+            if (!user?.businessId || !db) return;
+            try {
+                const snap = await getDoc(doc(db, 'businesses', user.businessId));
+                if (snap.exists()) {
+                    setBusiness({ id: snap.id, ...snap.data() });
+                }
+            } catch (err) {
+                console.error('[Integrations] Failed to fetch business:', err);
+            }
+        }
+        fetchBusiness();
+    }, [user?.businessId]);
 
     const handleConnectMeta = () => {
         if (!business?.id) return;

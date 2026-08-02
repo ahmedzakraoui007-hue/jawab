@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   MessageSquare,
@@ -25,18 +25,31 @@ import { ChatMockup } from "@/components/marketing/chat-mockup";
 import { Reveal, RevealGroup, RevealItem } from "@/components/marketing/reveal";
 import { Counter } from "@/components/marketing/counter";
 import { PricingToggle } from "@/components/marketing/pricing-toggle";
+import { CurrencySelector } from "@/components/marketing/currency-selector";
 import { FaqAccordion } from "@/components/marketing/faq-accordion";
 import { LogoMark } from "@/components/marketing/logo";
 import { useI18n, useLocalizedHref } from "@/i18n/context";
+import { PLAN_PRICING, DEFAULT_CURRENCY, CURRENCY_STORAGE_KEY, type CurrencyCode } from "@/lib/pricing";
 
 const stepIcons = [Settings2, Rocket, CalendarCheck];
-const planMonthly = [349, 899, 1499];
-const planAnnualMonthly = [279, 719, 1199];
 
 export function HomeClient() {
   const { dict } = useI18n();
   const href = useLocalizedHref();
   const [annual, setAnnual] = useState(false);
+  const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(CURRENCY_STORAGE_KEY) as CurrencyCode | null;
+    if (stored && PLAN_PRICING[stored]) setCurrency(stored);
+  }, []);
+
+  const handleCurrencyChange = (code: CurrencyCode) => {
+    setCurrency(code);
+    window.localStorage.setItem(CURRENCY_STORAGE_KEY, code);
+  };
+
+  const { monthly: planMonthly, annualMonthly: planAnnualMonthly } = PLAN_PRICING[currency];
 
   return (
     <div className="min-h-screen bg-black antialiased relative overflow-hidden flex flex-col">
@@ -252,8 +265,9 @@ export function HomeClient() {
               {dict.pricing.heading} <span className="text-blue-500">{dict.pricing.headingAccent}</span>
             </h2>
             <p className="text-neutral-400 mb-10 text-lg">{dict.pricing.subheading}</p>
-            <div className="flex justify-center mb-16">
+            <div className="flex flex-wrap justify-center items-center gap-4 mb-16">
               <PricingToggle annual={annual} onChange={setAnnual} />
+              <CurrencySelector value={currency} onChange={handleCurrencyChange} />
             </div>
           </Reveal>
 
@@ -279,7 +293,7 @@ export function HomeClient() {
                       <span className="text-4xl font-bold text-white">
                         {annual ? planAnnualMonthly[idx] : planMonthly[idx]}
                       </span>
-                      <span className="text-sm font-normal text-neutral-500">{dict.pricing.perMonth}</span>
+                      <span className="text-sm font-normal text-neutral-500">{currency}{dict.pricing.perMonth}</span>
                     </div>
                     <p className="text-xs text-neutral-500 mb-6">
                       {annual ? dict.pricing.billedAnnually : dict.pricing.billedMonthly}
@@ -395,8 +409,8 @@ export function HomeClient() {
             <div>
               <h4 className="text-white font-semibold text-sm mb-4">{dict.footer.legal}</h4>
               <ul className="space-y-3 text-sm text-neutral-500">
-                <li><a href="#" className="hover:text-white transition-colors">{dict.footer.privacyLink}</a></li>
-                <li><a href="#" className="hover:text-white transition-colors">{dict.footer.termsLink}</a></li>
+                <li><Link href={href('/privacy')} className="hover:text-white transition-colors">{dict.footer.privacyLink}</Link></li>
+                <li><Link href={href('/terms')} className="hover:text-white transition-colors">{dict.footer.termsLink}</Link></li>
               </ul>
             </div>
           </div>

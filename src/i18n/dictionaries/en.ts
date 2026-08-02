@@ -90,7 +90,7 @@ export const en = {
         monthly: 'Monthly',
         annual: 'Annual',
         save: 'Save 20%',
-        perMonth: 'AED/mo',
+        perMonth: '/mo',
         billedMonthly: 'billed monthly',
         billedAnnually: 'billed annually',
         noCreditCard: 'No credit card required',
@@ -205,7 +205,7 @@ export const en = {
         google: 'Google',
         noAccount: "Don't have an account?",
         signUpFree: 'Sign up free',
-        terms: 'By signing in, you agree to our Terms of Service and Privacy Policy.',
+        terms: 'By signing in, you agree to our {terms} and {privacy}.',
     },
     signup: {
         title: 'Create your account',

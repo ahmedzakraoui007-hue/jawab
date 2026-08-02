@@ -162,6 +162,27 @@ export interface ConversationMessage {
 }
 
 // ============================================
+// Booking Types
+// ============================================
+export interface Booking {
+    id: string;
+    businessId: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    service: string;
+    price?: number;
+    serviceDuration: number;
+    startTime: Timestamp;
+    endTime: Timestamp;
+    notes?: string;
+    status: 'confirmed' | 'pending' | 'cancelled';
+    createdVia?: 'whatsapp' | 'voice' | 'dashboard' | 'api' | 'website';
+    calendarEventId?: string | null;
+    createdAt: Timestamp;
+}
+
+// ============================================
 // Helper Functions
 // ============================================
 

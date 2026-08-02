@@ -1,43 +1,119 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
+import { authFetch } from '@/lib/auth-fetch';
+import { db } from '@/lib/firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 import { Row, Col, Typography } from 'antd';
 import {
     MessageOutlined,
     CalendarOutlined,
     RiseOutlined,
-    ClockCircleOutlined,
-    ArrowDownOutlined,
 } from '@ant-design/icons';
 import { StatsCard, RecentConversationsList, UpcomingBookingsList } from '@/components/dashboard';
 
 const { Title, Text } = Typography;
 
-// Mock data for demo
-const metrics = {
-    today: {
-        conversations: 127, conversationsChange: 12,
-        bookings: 23, bookingsChange: 5,
-        revenue: 4600, revenueChange: 8,
-        avgResponseTime: 2.1, responseTimeChange: -15,
-    },
-};
+function detectLanguageFromMessages(messages: { role: string; content: string }[]): string {
+    if (!messages || messages.length === 0) return 'Unknown';
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) return 'Unknown';
+    if (/[؀-ۿ]/.test(lastUserMsg.content)) return 'Arabic';
+    if (/[ऀ-ॿ]/.test(lastUserMsg.content)) return 'Hindi';
+    return 'English';
+}
 
-const recentConversations = [
-    { id: '1', customerPhone: '+971 55 423 4421', customerName: 'Fatima', language: 'Arabic', channel: 'whatsapp' as const, lastMessage: 'Booked haircut for Thursday 4pm', timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(), status: 'resolved' as const },
-    { id: '2', customerPhone: '+971 50 882 8837', customerName: 'Sarah', language: 'English', channel: 'voice' as const, lastMessage: 'Asked about bridal packages - sent prices', timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(), status: 'resolved' as const },
-    { id: '3', customerPhone: '+971 52 771 1199', customerName: 'Priya', language: 'Hindi', channel: 'whatsapp' as const, lastMessage: 'Escalated to human - complex request', timestamp: new Date(Date.now() - 32 * 60 * 1000).toISOString(), status: 'escalated' as const },
-    { id: '4', customerPhone: '+971 54 331 9922', customerName: 'Noor', language: 'Arabic', channel: 'whatsapp' as const, lastMessage: 'Confirmed appointment for tomorrow', timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(), status: 'resolved' as const },
-];
-
-const upcomingBookings = [
-    { id: '1', customerName: 'Sara', service: 'Haircut', time: '2:00 PM', date: 'Today' },
-    { id: '2', customerName: 'Fatima', service: 'Mani-Pedi', time: '3:30 PM', date: 'Today' },
-    { id: '3', customerName: 'Noor', service: 'Hair Color', time: '5:00 PM', date: 'Today' },
-    { id: '4', customerName: 'Layla', service: 'Bridal Package', time: '10:00 AM', date: 'Tomorrow' },
-];
+function formatBookingDate(iso: string): string {
+    const d = new Date(iso);
+    const today = new Date();
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const isSameDay = (a: Date, b: Date) =>
+        a.toDateString() === b.toDateString();
+    if (isSameDay(d, today)) return 'Today';
+    if (isSameDay(d, tomorrow)) return 'Tomorrow';
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
 
 export default function DashboardPage() {
+    const { user } = useAuth();
+    const [conversations, setConversations] = useState<any[]>([]);
+    const [upcomingBookings, setUpcomingBookings] = useState<any[]>([]);
+    const [conversationsToday, setConversationsToday] = useState(0);
+    const [bookingsToday, setBookingsToday] = useState(0);
+    const [revenueToday, setRevenueToday] = useState(0);
+
+    // Real-time listener for the 4 most recent conversations
+    useEffect(() => {
+        if (!user?.businessId || !db) return;
+
+        const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
+        const q = query(convsRef, orderBy('lastMessageAt', 'desc'), limit(4));
+
+        const unsubscribe = onSnapshot(
+            q,
+            (snapshot) => {
+                const todayStr = new Date().toDateString();
+                let todayCount = 0;
+                const convs = snapshot.docs.map((d) => {
+                    const data = d.data();
+                    const startedAt = data.startedAt?.toDate?.();
+                    if (startedAt && startedAt.toDateString() === todayStr) todayCount += 1;
+                    return {
+                        id: d.id,
+                        ...data,
+                        timestamp: data.lastMessageAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+                        lastMessage: data.messages?.slice(-1)?.[0]?.content || 'No messages yet',
+                        language: detectLanguageFromMessages(data.messages || []),
+                    };
+                });
+                setConversations(convs);
+                setConversationsToday(todayCount);
+            },
+            (err) => console.error('[Overview] Conversations listener error:', err)
+        );
+
+        return () => unsubscribe();
+    }, [user?.businessId]);
+
+    // Upcoming bookings + today's booking stats
+    useEffect(() => {
+        async function fetchBookings() {
+            if (!user?.businessId) return;
+            try {
+                const res = await authFetch(`/api/calendar/book?businessId=${user.businessId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const now = new Date();
+                const todayStr = now.toDateString();
+                const all = (data.bookings || []) as any[];
+
+                setBookingsToday(all.filter((b) => b.startTime && new Date(b.startTime).toDateString() === todayStr).length);
+                setRevenueToday(
+                    all
+                        .filter((b) => b.startTime && new Date(b.startTime).toDateString() === todayStr)
+                        .reduce((sum, b) => sum + (b.price || 0), 0)
+                );
+
+                const upcoming = all
+                    .filter((b) => b.startTime && new Date(b.startTime).getTime() >= now.getTime())
+                    .slice(0, 4)
+                    .map((b) => ({
+                        id: b.id,
+                        customerName: b.customerName,
+                        service: b.service,
+                        time: new Date(b.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+                        date: formatBookingDate(b.startTime),
+                    }));
+                setUpcomingBookings(upcoming);
+            } catch (err) {
+                console.error('[Overview] Bookings fetch error:', err);
+            }
+        }
+        fetchBookings();
+    }, [user?.businessId]);
+
     return (
         <div>
             <div style={{ marginBottom: 24 }}>
@@ -46,28 +122,34 @@ export default function DashboardPage() {
             </div>
 
             <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-                <Col xs={24} sm={12} lg={6}>
-                    <StatsCard title="Conversations" value={metrics.today.conversations} icon={<MessageOutlined style={{ color: '#10b981', marginRight: 8 }} />} change={metrics.today.conversationsChange} changeDirection="up" />
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                    <StatsCard title="Bookings" value={metrics.today.bookings} icon={<CalendarOutlined style={{ color: '#2563eb', marginRight: 8 }} />} change={metrics.today.bookingsChange} changeDirection="up" valueStyle={{ color: '#2563eb' }} />
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
-                    <StatsCard title="Revenue" value={metrics.today.revenue} icon={<RiseOutlined style={{ color: '#f59e0b', marginRight: 8 }} />} change={metrics.today.revenueChange} changeDirection="up" formatter={formatCurrency} />
-                </Col>
-                <Col xs={24} sm={12} lg={6}>
+                <Col xs={24} sm={12} lg={8}>
                     <StatsCard
-                        title="Avg Response" value={metrics.today.avgResponseTime}
-                        icon={<ClockCircleOutlined style={{ color: '#8b5cf6', marginRight: 8 }} />}
-                        suffix={<span>s</span>}
-                        extra={<Text type="success" style={{ fontSize: 12 }}><ArrowDownOutlined /> {Math.abs(metrics.today.responseTimeChange)}% faster</Text>}
+                        title="Conversations Today"
+                        value={conversationsToday}
+                        icon={<MessageOutlined style={{ color: '#10b981', marginRight: 8 }} />}
+                    />
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                    <StatsCard
+                        title="Bookings Today"
+                        value={bookingsToday}
+                        icon={<CalendarOutlined style={{ color: '#2563eb', marginRight: 8 }} />}
+                        valueStyle={{ color: '#2563eb' }}
+                    />
+                </Col>
+                <Col xs={24} sm={12} lg={8}>
+                    <StatsCard
+                        title="Revenue Today"
+                        value={revenueToday}
+                        icon={<RiseOutlined style={{ color: '#f59e0b', marginRight: 8 }} />}
+                        formatter={formatCurrency}
                     />
                 </Col>
             </Row>
 
             <Row gutter={[16, 16]}>
                 <Col xs={24} lg={16}>
-                    <RecentConversationsList conversations={recentConversations} />
+                    <RecentConversationsList conversations={conversations} />
                 </Col>
                 <Col xs={24} lg={8}>
                     <UpcomingBookingsList bookings={upcomingBookings} />
