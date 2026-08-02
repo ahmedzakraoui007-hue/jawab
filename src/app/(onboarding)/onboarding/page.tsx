@@ -62,6 +62,7 @@ export default function OnboardingPage() {
         services: [
             { id: '1', name: '', price: '', duration: '45' },
         ],
+        whatsappNumberRequested: '',
     });
 
     // Step validation
@@ -146,6 +147,7 @@ export default function OnboardingPage() {
                 tone: 'friendly',
                 staffIds: [user.uid],
                 googleMapsLink: businessData.googleMapsLink.trim() || null,
+                whatsappNumberRequested: businessData.whatsappNumberRequested.trim() || null,
                 createdAt: now,
                 updatedAt: now,
             });
@@ -459,7 +461,9 @@ export default function OnboardingPage() {
                             <Input
                                 label="WhatsApp Business Number"
                                 placeholder="+971 50 123 4567"
-                                hint="Enter your WhatsApp Business API number manually"
+                                hint="We'll use this to help connect your WhatsApp Business number — no code needed"
+                                value={businessData.whatsappNumberRequested}
+                                onChange={(e) => setBusinessData(prev => ({ ...prev, whatsappNumberRequested: e.target.value }))}
                             />
 
                             <div className="flex items-start gap-4 p-4 bg-amber-50 border border-amber-100 rounded-xl">

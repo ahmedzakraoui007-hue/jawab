@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
-import { Table, Tag, Badge, Space, Avatar, Button, Tooltip, Input, Typography } from 'antd';
-import { SearchOutlined, FilterOutlined, MoreOutlined } from '@ant-design/icons';
+import React, { useMemo, useState } from 'react';
+import { Table, Tag, Badge, Space, Avatar, Button, Tooltip, Input, Select, Typography } from 'antd';
+import { SearchOutlined, MoreOutlined } from '@ant-design/icons';
 import { formatCurrency } from '@/lib/utils';
 import { bookingStatusConfig, sourceIcons } from './constants';
 
@@ -27,6 +27,22 @@ interface BookingsTableProps {
 }
 
 export function BookingsTable({ bookings, loading }: BookingsTableProps) {
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('all');
+
+    const filteredBookings = useMemo(() => {
+        const term = search.trim().toLowerCase();
+        return bookings.filter((b) => {
+            const matchesSearch =
+                !term ||
+                b.customerName?.toLowerCase().includes(term) ||
+                b.customerPhone?.toLowerCase().includes(term) ||
+                b.service?.toLowerCase().includes(term);
+            const matchesStatus = statusFilter === 'all' || b.status === statusFilter;
+            return matchesSearch && matchesStatus;
+        });
+    }, [bookings, search, statusFilter]);
+
     const columns = [
         {
             title: 'Time',
@@ -97,16 +113,34 @@ export function BookingsTable({ bookings, loading }: BookingsTableProps) {
         <>
             <div style={{ padding: 16, borderBottom: '1px solid #f0f0f0' }}>
                 <Space>
-                    <Input placeholder="Search bookings..." prefix={<SearchOutlined />} style={{ width: 300 }} />
-                    <Button icon={<FilterOutlined />}>Filter</Button>
+                    <Input
+                        placeholder="Search bookings..."
+                        prefix={<SearchOutlined />}
+                        style={{ width: 300 }}
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        allowClear
+                    />
+                    <Select
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        style={{ width: 160 }}
+                        options={[
+                            { value: 'all', label: 'All statuses' },
+                            { value: 'confirmed', label: 'Confirmed' },
+                            { value: 'pending', label: 'Pending' },
+                            { value: 'cancelled', label: 'Cancelled' },
+                        ]}
+                    />
                 </Space>
             </div>
             <Table
                 columns={columns}
-                dataSource={bookings}
+                dataSource={filteredBookings}
                 rowKey="id"
                 pagination={{ pageSize: 10 }}
                 loading={loading}
+                locale={{ emptyText: search || statusFilter !== 'all' ? 'No bookings match your search' : 'No bookings yet' }}
             />
         </>
     );

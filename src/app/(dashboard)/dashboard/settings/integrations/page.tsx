@@ -315,7 +315,11 @@ export default function IntegrationsPage() {
                     showIcon
                     icon={<QuestionCircleOutlined />}
                     action={
-                        <Button size="small" type="primary">
+                        <Button
+                            size="small"
+                            type="primary"
+                            href={`mailto:support@jawab.ai?subject=${encodeURIComponent('Integration help — ' + (business?.name || 'my business'))}`}
+                        >
                             Contact Support
                         </Button>
                     }

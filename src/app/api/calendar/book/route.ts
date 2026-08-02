@@ -87,6 +87,8 @@ export async function POST(request: NextRequest) {
             serviceDuration,
             startTime,
             notes,
+            price,
+            createdVia,
         } = body;
 
         // Validate required fields
@@ -142,11 +144,12 @@ export async function POST(request: NextRequest) {
                 const bookingRef = await addDoc(collection(db, 'bookings'), {
                     ...booking,
                     businessId,
+                    price: typeof price === 'number' ? price : 0,
                     startTime: Timestamp.fromDate(start),
                     endTime: Timestamp.fromDate(end),
                     calendarEventId,
                     createdAt: serverTimestamp(),
-                    createdVia: 'api',
+                    createdVia: createdVia || 'api',
                 });
 
                 booking.id = bookingRef.id;
