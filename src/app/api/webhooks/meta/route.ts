@@ -13,6 +13,7 @@ import {
 import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { BookingContext } from '@/lib/booking-actions';
 
 /**
  * MULTI-TENANT: Get business by Meta Page ID or Instagram Account ID
@@ -154,7 +155,18 @@ async function processMessage(message: ParsedMetaMessage, pageId: string): Promi
     }
 
     const historyForAI = conversation.messages.map(m => ({ role: m.role as 'user' | 'model', content: m.content }));
-    const aiResponse = await generateResponse(systemPrompt, historyForAI, message.text);
+
+    // Meta DMs have no phone number — use the platform senderId as the
+    // best-available contact identifier on any booking created from here.
+    const bookingContext: BookingContext = {
+        businessId,
+        customerPhone: message.senderId,
+        services: business.services || [],
+        hours: business.hours || {},
+        googleCalendar: business.googleCalendar,
+    };
+
+    const aiResponse = await generateResponse(systemPrompt, historyForAI, message.text, 3, bookingContext);
 
     await saveMessage(businessId, conversation.id, message.text, aiResponse, intent, {
         postId: message.postId,

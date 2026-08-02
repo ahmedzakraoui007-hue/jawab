@@ -3,6 +3,7 @@ import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini'
 import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured, verifyTwilioRequest } from '@/lib/twilio';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { BookingContext } from '@/lib/booking-actions';
 
 /**
  * TWILIO WEBHOOK SETUP:
@@ -224,8 +225,18 @@ export async function POST(request: NextRequest) {
             content: m.content,
         }));
 
+        // Give the AI the ability to actually check availability and book —
+        // not just talk about it.
+        const bookingContext: BookingContext = {
+            businessId,
+            customerPhone: incoming.from,
+            services: business.services || [],
+            hours: business.hours || {},
+            googleCalendar: business.googleCalendar,
+        };
+
         // Generate AI response
-        const aiResponse = await generateResponse(systemPrompt, historyForAI, incoming.body);
+        const aiResponse = await generateResponse(systemPrompt, historyForAI, incoming.body, 3, bookingContext);
 
         // Save to conversation history
         await saveMessage(businessId, conversation.id, incoming.body, aiResponse, intent);

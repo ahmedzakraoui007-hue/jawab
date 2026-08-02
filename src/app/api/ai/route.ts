@@ -3,6 +3,7 @@ import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini'
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import type { BookingContext } from '@/lib/booking-actions';
 
 /**
  * Dashboard "test your AI" endpoint — simulates a conversation using the
@@ -69,9 +70,17 @@ export async function POST(request: NextRequest) {
             tone: business.tone,
         });
 
-        // ── Generate AI response ────────────────────────────────────
+        // ── Generate AI response (with real booking/calendar tools) ──
+        const bookingContext: BookingContext = {
+            businessId,
+            customerPhone: customerPhone || 'test-customer',
+            services: business.services || [],
+            hours: business.hours || {},
+            googleCalendar: business.googleCalendar,
+        };
+
         const startTime = Date.now();
-        const response = await generateResponse(systemPrompt, history, message);
+        const response = await generateResponse(systemPrompt, history, message, 3, bookingContext);
         const processingTime = Date.now() - startTime;
 
         // ── Persist conversation to Firestore ───────────────────────

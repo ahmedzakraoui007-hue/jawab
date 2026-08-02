@@ -1,4 +1,5 @@
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { GoogleGenerativeAI, GenerativeModel, SchemaType, Tool, FunctionResponsePart } from '@google/generative-ai';
+import { executeBookingFunction, type BookingContext } from '@/lib/booking-actions';
 
 // Initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -6,6 +7,56 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 // Get the model - using gemini-2.0-flash for higher rate limits (15 RPM vs 5 RPM)
 export const geminiModel: GenerativeModel = genAI.getGenerativeModel({
     model: 'gemini-2.0-flash',
+});
+
+// Function-calling tools that let the AI actually check availability and
+// create bookings, instead of only narrating that it will. Only attached
+// when a BookingContext is supplied to generateResponse.
+const bookingTools: Tool[] = [
+    {
+        functionDeclarations: [
+            {
+                name: 'check_availability',
+                description:
+                    "Check the business's real calendar for open appointment slots on a given date. Always call this before promising a specific time.",
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        date: {
+                            type: SchemaType.STRING,
+                            description: 'Date to check, in YYYY-MM-DD format.',
+                        },
+                        duration: {
+                            type: SchemaType.NUMBER,
+                            description: 'Requested service duration in minutes, if known.',
+                        },
+                    },
+                    required: ['date'],
+                },
+            },
+            {
+                name: 'create_booking',
+                description:
+                    'Create a real, confirmed appointment booking. Only call this after the customer has agreed to a specific date and time that check_availability showed as open.',
+                parameters: {
+                    type: SchemaType.OBJECT,
+                    properties: {
+                        customerName: { type: SchemaType.STRING, description: "The customer's name." },
+                        service: { type: SchemaType.STRING, description: 'The exact service name being booked.' },
+                        date: { type: SchemaType.STRING, description: 'Booking date, in YYYY-MM-DD format.' },
+                        time: { type: SchemaType.STRING, description: 'Booking time, in 24-hour HH:MM format.' },
+                        duration: { type: SchemaType.NUMBER, description: 'Service duration in minutes, if known.' },
+                    },
+                    required: ['customerName', 'service', 'date', 'time'],
+                },
+            },
+        ],
+    },
+];
+
+const geminiModelWithTools: GenerativeModel = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    tools: bookingTools,
 });
 
 // System prompt template for Jawab AI
@@ -129,11 +180,14 @@ export async function generateResponse(
     systemPrompt: string,
     conversationHistory: Array<{ role: 'user' | 'model'; content: string }>,
     userMessage: string,
-    retries = 3
+    retries = 3,
+    bookingContext?: BookingContext
 ): Promise<string> {
+    const model = bookingContext ? geminiModelWithTools : geminiModel;
+
     for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            const chat = geminiModel.startChat({
+            const chat = model.startChat({
                 history: [
                     { role: 'user', parts: [{ text: `System Instructions:\n${systemPrompt}` }] },
                     { role: 'model', parts: [{ text: 'Understood. I will act as the AI receptionist following these instructions.' }] },
@@ -144,8 +198,34 @@ export async function generateResponse(
                 ],
             });
 
-            const result = await chat.sendMessage(userMessage);
-            const response = result.response;
+            let result = await chat.sendMessage(userMessage);
+            let response = result.response;
+
+            // Handle function calls: execute the real booking/calendar tool
+            // and feed the result back to the model, up to a few rounds.
+            if (bookingContext) {
+                for (let round = 0; round < 3; round++) {
+                    const calls = response.functionCalls();
+                    if (!calls || calls.length === 0) break;
+
+                    const responseParts: FunctionResponsePart[] = await Promise.all(
+                        calls.map(async (call) => ({
+                            functionResponse: {
+                                name: call.name,
+                                response: await executeBookingFunction(
+                                    call.name,
+                                    call.args as Record<string, unknown>,
+                                    bookingContext
+                                ),
+                            },
+                        }))
+                    );
+
+                    result = await chat.sendMessage(responseParts);
+                    response = result.response;
+                }
+            }
+
             return response.text();
         } catch (error: unknown) {
             const err = error as { status?: number; message?: string };

@@ -5,6 +5,7 @@ import { isTwilioConfigured, verifyTwilioRequest } from '@/lib/twilio';
 import { getAppUrl } from '@/lib/utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { BookingContext } from '@/lib/booking-actions';
 
 /**
  * MULTI-TENANT: Get business by voice phone number
@@ -185,10 +186,20 @@ export async function POST(request: NextRequest) {
 - If customer wants to book, collect: service, date/time preference, name
 - End with a clear question or confirmation`;
 
+        const bookingContext: BookingContext = {
+            businessId: businessId!,
+            customerPhone: from,
+            services: businessData.services || [],
+            hours: businessData.hours || {},
+            googleCalendar: businessData.googleCalendar,
+        };
+
         const aiResponse = await generateResponse(
             systemPrompt,
             voiceConversations[callSid].messages,
-            userInput
+            userInput,
+            3,
+            bookingContext
         );
 
         // Clean response for speech (remove markdown, emojis, etc.)
