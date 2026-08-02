@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini';
-import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured } from '@/lib/twilio';
+import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured, verifyTwilioRequest } from '@/lib/twilio';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -58,15 +58,7 @@ async function getBusinessByPhone(whatsappNumber: string): Promise<{ business: F
             return { business: doc.data(), businessId: doc.id };
         }
 
-        // Fallback to first business
-        console.log(`[WhatsApp] No business found for ${cleanNumber}, using first available`);
-        const allBusinesses = await businessesRef.limit(1).get();
-        if (!allBusinesses.empty) {
-            const doc = allBusinesses.docs[0];
-            return { business: doc.data(), businessId: doc.id };
-        }
-
-        console.error(`[WhatsApp] No businesses found in Firestore at all`);
+        console.error(`[WhatsApp] No business found for ${cleanNumber} — refusing to guess`);
         return null;
     } catch (error) {
         console.error('[WhatsApp] Error fetching business:', error);
@@ -163,6 +155,21 @@ export async function POST(request: NextRequest) {
     try {
         // Parse incoming message
         const formData = await request.formData();
+
+        // Verify this request actually came from Twilio before trusting anything in it
+        if (isTwilioConfigured) {
+            const paramsForValidation: Record<string, string> = {};
+            formData.forEach((value, key) => {
+                paramsForValidation[key] = String(value);
+            });
+            if (!verifyTwilioRequest(request, paramsForValidation)) {
+                console.warn('[WhatsApp] Invalid Twilio signature — rejecting request');
+                return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+            }
+        } else {
+            console.warn('[WhatsApp] Twilio not configured — signature NOT verified');
+        }
+
         const incoming = parseWhatsAppWebhook(formData);
 
         console.log(`[WhatsApp] From: ${incoming.from}, Message: "${incoming.body}", Profile: ${incoming.profileName}`);

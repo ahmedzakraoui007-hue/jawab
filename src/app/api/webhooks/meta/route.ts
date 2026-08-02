@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
     verifyWebhook,
+    verifyMetaSignature,
+    isMetaSignatureVerificationEnabled,
     parseWebhookPayload,
     sendDirectMessage,
     replyToComment,
@@ -35,15 +37,7 @@ async function getBusinessByMetaId(pageId: string): Promise<{ business: Firebase
             return { business: doc.data(), businessId: doc.id };
         }
 
-        // Fallback to first business
-        console.log(`[Meta] No business found for pageId ${pageId}, using first available`);
-        const allBusinesses = await businessesRef.limit(1).get();
-        if (!allBusinesses.empty) {
-            const doc = allBusinesses.docs[0];
-            return { business: doc.data(), businessId: doc.id };
-        }
-
-        console.error(`[Meta] No businesses found in Firestore at all`);
+        console.error(`[Meta] No business found for pageId/instagramAccountId ${pageId} — refusing to guess`);
         return null;
     } catch (error) {
         console.error('[Meta] Error fetching business:', error);
@@ -186,7 +180,22 @@ export async function GET(request: NextRequest) {
 // POST - Handle incoming webhooks with MULTI-TENANT routing
 export async function POST(request: NextRequest) {
     try {
-        const { object, entry } = await request.json() as { object: string; entry: MetaWebhookEntry[] };
+        // Verify this request actually came from Meta before trusting anything
+        // in it. Must run against the raw body — request.json() would parse
+        // and re-serialize, which won't match the signed bytes.
+        const rawBody = await request.text();
+
+        if (isMetaSignatureVerificationEnabled) {
+            const signature = request.headers.get('x-hub-signature-256');
+            if (!verifyMetaSignature(rawBody, signature)) {
+                console.warn('[Meta] Invalid webhook signature — rejecting request');
+                return NextResponse.json({ error: 'Invalid signature' }, { status: 403 });
+            }
+        } else {
+            console.warn('[Meta] META_APP_SECRET not configured — webhook signature NOT verified');
+        }
+
+        const { object, entry } = JSON.parse(rawBody) as { object: string; entry: MetaWebhookEntry[] };
         console.log(`[Meta] Webhook: ${object} with ${entry?.length || 0} entries`);
 
         if (!entry?.length) return NextResponse.json({ status: 'no_entries' });

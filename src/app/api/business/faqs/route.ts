@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue } from 'firebase-admin/firestore';
 
 // FAQ type
@@ -16,28 +17,6 @@ interface FAQ {
 }
 
 /**
- * Resolve the businessId for the authenticated user.
- * Checks: (1) explicit param/body, (2) user's Firestore doc.
- */
-async function resolveBusinessId(
-    explicitId: string | null | undefined,
-    request: NextRequest
-): Promise<string | null> {
-    if (explicitId) return explicitId;
-
-    // Look up from user doc using uid from middleware
-    const uid = request.headers.get('x-user-uid');
-    if (!uid) return null;
-
-    try {
-        const userDoc = await adminDb.collection('users').doc(uid).get();
-        return userDoc.data()?.businessId || null;
-    } catch {
-        return null;
-    }
-}
-
-/**
  * GET /api/business/faqs?businessId=xxx
  * List all FAQs for a business
  */
@@ -46,8 +25,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
-    const explicitId = request.nextUrl.searchParams.get('businessId');
-    const businessId = await resolveBusinessId(explicitId, request);
+    const businessId = await resolveOwnBusinessId(request);
 
     if (!businessId) {
         return NextResponse.json({ error: 'businessId required' }, { status: 400 });
@@ -91,7 +69,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { question, questionAr, answer, answerAr, category, keywords } = body;
 
-        const businessId = await resolveBusinessId(body.businessId, request);
+        const businessId = await resolveOwnBusinessId(request);
 
         if (!businessId || !question || !answer) {
             return NextResponse.json(
@@ -150,7 +128,7 @@ export async function PUT(request: NextRequest) {
         const body = await request.json();
         const { faqId, updates } = body;
 
-        const businessId = await resolveBusinessId(body.businessId, request);
+        const businessId = await resolveOwnBusinessId(request);
 
         if (!businessId || !faqId || !updates) {
             return NextResponse.json(
@@ -206,7 +184,7 @@ export async function DELETE(request: NextRequest) {
         const body = await request.json();
         const { faqId } = body;
 
-        const businessId = await resolveBusinessId(body.businessId, request);
+        const businessId = await resolveOwnBusinessId(request);
 
         if (!businessId || !faqId) {
             return NextResponse.json(

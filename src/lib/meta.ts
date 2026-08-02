@@ -3,6 +3,8 @@
  * Handles Messenger DMs, Instagram DMs, and Comments
  */
 
+import { createHmac, timingSafeEqual } from 'crypto';
+
 // Environment variables
 const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
@@ -12,6 +14,7 @@ const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 const FACEBOOK_PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 
 export const isMetaConfigured = !!META_ACCESS_TOKEN;
+export const isMetaSignatureVerificationEnabled = !!META_APP_SECRET;
 
 const GRAPH_API_VERSION = 'v18.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
@@ -86,6 +89,24 @@ export function verifyWebhook(
 
     console.error('[Meta] Webhook verification failed', { mode, token, expected: META_VERIFY_TOKEN });
     return { success: false, error: 'Verification failed' };
+}
+
+/**
+ * Verify that an incoming webhook POST body genuinely came from Meta.
+ * Meta signs the raw request body with HMAC-SHA256 using the app secret,
+ * sent as `X-Hub-Signature-256: sha256=<hex>`. Must run against the raw
+ * (unparsed) body — recomputing over re-serialized JSON will not match.
+ */
+export function verifyMetaSignature(rawBody: string, signatureHeader: string | null): boolean {
+    if (!META_APP_SECRET || !signatureHeader) return false;
+
+    const expected = 'sha256=' + createHmac('sha256', META_APP_SECRET).update(rawBody, 'utf8').digest('hex');
+
+    const expectedBuf = Buffer.from(expected);
+    const receivedBuf = Buffer.from(signatureHeader);
+    if (expectedBuf.length !== receivedBuf.length) return false;
+
+    return timingSafeEqual(expectedBuf, receivedBuf);
 }
 
 /**

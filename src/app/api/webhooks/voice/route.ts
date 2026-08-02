@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse, buildSystemPrompt } from '@/lib/gemini';
 import { textToSpeech, detectTextLanguage, getVoiceForLanguage, isElevenLabsConfigured } from '@/lib/elevenlabs';
+import { isTwilioConfigured, verifyTwilioRequest } from '@/lib/twilio';
 import { getAppUrl } from '@/lib/utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -28,15 +29,7 @@ async function getBusinessByPhoneNumber(phoneNumber: string): Promise<{ business
             return { business: doc.data(), businessId: doc.id };
         }
 
-        // Fallback to first business
-        console.log(`[Voice] No business found for ${phoneNumber}, using first available`);
-        const allBusinesses = await businessesRef.limit(1).get();
-        if (!allBusinesses.empty) {
-            const doc = allBusinesses.docs[0];
-            return { business: doc.data(), businessId: doc.id };
-        }
-
-        console.error(`[Voice] No businesses found in Firestore at all`);
+        console.error(`[Voice] No business found for ${phoneNumber} — refusing to guess`);
         return null;
     } catch (error) {
         console.error('[Voice] Error fetching business:', error);
@@ -61,6 +54,24 @@ const BASE_URL = getAppUrl();
 export async function POST(request: NextRequest) {
     try {
         const formData = await request.formData();
+
+        // Verify this request actually came from Twilio before trusting anything in it
+        if (isTwilioConfigured) {
+            const paramsForValidation: Record<string, string> = {};
+            formData.forEach((value, key) => {
+                paramsForValidation[key] = String(value);
+            });
+            if (!verifyTwilioRequest(request, paramsForValidation)) {
+                console.warn('[Voice] Invalid Twilio signature — rejecting request');
+                return new NextResponse(
+                    `<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>`,
+                    { status: 403, headers: { 'Content-Type': 'text/xml' } }
+                );
+            }
+        } else {
+            console.warn('[Voice] Twilio not configured — signature NOT verified');
+        }
+
         const callSid = formData.get('CallSid') as string;
         const from = formData.get('From') as string;
         const callStatus = formData.get('CallStatus') as string;
@@ -143,15 +154,6 @@ export async function POST(request: NextRequest) {
             const businessDoc = await adminDb.collection('businesses').doc(businessId).get();
             if (businessDoc.exists) {
                 businessData = businessDoc.data()!;
-            }
-        }
-
-        if (!businessData) {
-            // Last resort fallback — get first business
-            const first = await adminDb.collection('businesses').limit(1).get();
-            if (!first.empty) {
-                businessData = first.docs[0].data();
-                voiceConversations[callSid].businessId = first.docs[0].id;
             }
         }
 

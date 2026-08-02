@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { getAppUrl } from '@/lib/utils';
+import { verifyTokenAndBusinessMembership } from '@/lib/auth-guard';
 
 const META_APP_ID = process.env.META_APP_ID;
 const REDIRECT_URI = `${getAppUrl()}/api/integrations/meta/callback`;
@@ -19,19 +20,21 @@ const SCOPES = [
 /**
  * GET /api/integrations/meta/auth
  * Start Meta OAuth flow - redirects to Facebook login
- * 
+ *
  * Query params:
- * - businessId: The business to connect
+ * - businessId: The business to connect (required)
+ * - idToken: The caller's Firebase ID token (required) — see the matching
+ *   comment in api/integrations/calendar/auth/route.ts for why this can't
+ *   just be a Bearer header here.
  */
 export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const businessId = searchParams.get('businessId');
+    const idToken = searchParams.get('idToken');
 
-    if (!businessId) {
-        return NextResponse.json(
-            { error: 'businessId is required' },
-            { status: 400 }
-        );
+    const auth = await verifyTokenAndBusinessMembership(idToken, businessId);
+    if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
     if (!META_APP_ID) {
@@ -41,9 +44,11 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    // Generate state token for CSRF protection
+    // Generate state token for CSRF protection and to pass businessId + the
+    // verified uid (so the callback can record who actually connected this)
     const state = Buffer.from(JSON.stringify({
         businessId,
+        uid: auth.uid,
         timestamp: Date.now(),
         nonce: Math.random().toString(36).substring(7),
     })).toString('base64');

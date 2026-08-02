@@ -1,55 +1,54 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAvailableSlots, formatSlotTime, formatSlotTimeArabic } from '@/lib/google-calendar';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
 
 /**
  * Get available booking slots
- * GET /api/calendar/slots?businessId=xxx&date=2024-01-15&duration=60
+ * GET /api/calendar/slots?date=2024-01-15&duration=60&lang=en
+ *
+ * businessId is resolved from the authenticated caller's own account —
+ * a signed-in user can only ever check their own business's availability.
  */
 export async function GET(request: NextRequest) {
-    const businessId = request.nextUrl.searchParams.get('businessId');
     const dateStr = request.nextUrl.searchParams.get('date'); // YYYY-MM-DD
     const duration = parseInt(request.nextUrl.searchParams.get('duration') || '60', 10);
     const lang = request.nextUrl.searchParams.get('lang') || 'en';
 
-    if (!businessId || !dateStr) {
-        return NextResponse.json(
-            { error: 'Missing required parameters: businessId, date' },
-            { status: 400 }
-        );
+    if (!dateStr) {
+        return NextResponse.json({ error: 'Missing required parameter: date' }, { status: 400 });
+    }
+
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const businessId = await resolveOwnBusinessId(request);
+    if (!businessId) {
+        return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
     }
 
     try {
-        // Get business data from Firestore
-        if (!db) {
-            // Return demo data if Firestore not available
-            return NextResponse.json({
-                date: dateStr,
-                slots: generateDemoSlots(new Date(dateStr), duration, lang),
-            });
-        }
+        const businessSnap = await adminDb.collection('businesses').doc(businessId).get();
 
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessSnap = await getDoc(businessRef);
-
-        if (!businessSnap.exists()) {
+        if (!businessSnap.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const business = businessSnap.data();
+        const business = businessSnap.data()!;
         const calendar = business.googleCalendar;
 
         if (!calendar?.connected || !calendar?.accessToken) {
-            // Return demo slots if calendar not connected
+            // Honest response: no fake/random availability. A real customer
+            // should never be shown open slots that don't actually exist.
             return NextResponse.json({
                 date: dateStr,
                 calendarConnected: false,
-                slots: generateDemoSlots(new Date(dateStr), duration, lang),
+                slots: [],
+                message: 'Google Calendar is not connected for this business yet.',
             });
         }
 
-        // Get day of week for business hours
         const date = new Date(dateStr);
         const dayName = date.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
         const hours = business.hours?.[dayName];
@@ -62,7 +61,6 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        // Get real availability from Google Calendar
         const slots = await getAvailableSlots(
             calendar.accessToken,
             calendar.refreshToken,
@@ -72,10 +70,9 @@ export async function GET(request: NextRequest) {
             hours
         );
 
-        // Format slots for response
         const formattedSlots = slots
-            .filter(slot => slot.available)
-            .map(slot => ({
+            .filter((slot) => slot.available)
+            .map((slot) => ({
                 start: slot.start.toISOString(),
                 end: slot.end.toISOString(),
                 displayTime: lang === 'ar' ? formatSlotTimeArabic(slot.start) : formatSlotTime(slot.start),
@@ -86,55 +83,8 @@ export async function GET(request: NextRequest) {
             calendarConnected: true,
             slots: formattedSlots,
         });
-
     } catch (error) {
         console.error('[Slots API] Error:', error);
-        return NextResponse.json(
-            { error: 'Failed to fetch availability' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to fetch availability' }, { status: 500 });
     }
-}
-
-/**
- * Generate demo slots for testing
- */
-function generateDemoSlots(date: Date, duration: number, lang: string) {
-    const slots = [];
-    const now = new Date();
-
-    // Generate slots from 10:00 to 20:00
-    for (let hour = 10; hour < 20; hour++) {
-        const slotStart = new Date(date);
-        slotStart.setHours(hour, 0, 0, 0);
-
-        // Skip past times for today
-        if (slotStart < now) continue;
-
-        const slotEnd = new Date(slotStart.getTime() + duration * 60000);
-
-        // Randomly mark some as unavailable for demo
-        if (Math.random() > 0.3) {
-            slots.push({
-                start: slotStart.toISOString(),
-                end: slotEnd.toISOString(),
-                displayTime: lang === 'ar' ? formatSlotTimeArabic(slotStart) : formatSlotTime(slotStart),
-            });
-        }
-
-        // Also add half-hour slot
-        const halfSlotStart = new Date(date);
-        halfSlotStart.setHours(hour, 30, 0, 0);
-
-        if (halfSlotStart > now && Math.random() > 0.3) {
-            const halfSlotEnd = new Date(halfSlotStart.getTime() + duration * 60000);
-            slots.push({
-                start: halfSlotStart.toISOString(),
-                end: halfSlotEnd.toISOString(),
-                displayTime: lang === 'ar' ? formatSlotTimeArabic(halfSlotStart) : formatSlotTime(halfSlotStart),
-            });
-        }
-    }
-
-    return slots;
 }

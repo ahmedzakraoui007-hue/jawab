@@ -1,51 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini';
-import { db } from '@/lib/firebase';
-import {
-    doc,
-    getDoc,
-    setDoc,
-    updateDoc,
-    Timestamp,
-} from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
+/**
+ * Dashboard "test your AI" endpoint — simulates a conversation using the
+ * authenticated caller's own business data. businessId is always resolved
+ * server-side, never trusted from the request body, since this prompt
+ * embeds the business's services/hours/FAQs and would otherwise let any
+ * signed-in user extract another business's data by guessing an ID.
+ */
 export async function POST(request: NextRequest) {
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const businessId = await resolveOwnBusinessId(request);
+    if (!businessId) {
+        return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
-        const { message, conversationId, businessId, channel, customerPhone } = body;
+        const { message, conversationId, channel, customerPhone } = body;
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
         }
 
-        if (!businessId) {
-            return NextResponse.json({ error: 'businessId is required' }, { status: 400 });
-        }
-
-        if (!db) {
-            return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
-        }
-
         // ── Fetch the real business from Firestore ──────────────────
-        const businessRef = doc(db, 'businesses', businessId);
-        const businessSnap = await getDoc(businessRef);
+        const businessSnap = await adminDb.collection('businesses').doc(businessId).get();
 
-        if (!businessSnap.exists()) {
+        if (!businessSnap.exists) {
             return NextResponse.json({ error: 'Business not found' }, { status: 404 });
         }
 
-        const business = businessSnap.data();
+        const business = businessSnap.data()!;
 
         // ── Load conversation history from Firestore ────────────────
         const convId = conversationId || `conv_${Date.now()}`;
-        const convRef = doc(db, 'businesses', businessId, 'conversations', convId);
-        const convSnap = await getDoc(convRef);
+        const convRef = adminDb.collection('businesses').doc(businessId).collection('conversations').doc(convId);
+        const convSnap = await convRef.get();
 
         let history: Array<{ role: 'user' | 'model'; content: string }> = [];
 
-        if (convSnap.exists()) {
-            const convData = convSnap.data();
-            // Extract role + content only (strip timestamp for Gemini)
+        if (convSnap.exists) {
+            const convData = convSnap.data()!;
             history = (convData.messages || []).map((m: { role: string; content: string }) => ({
                 role: m.role as 'user' | 'model',
                 content: m.content,
@@ -74,29 +75,24 @@ export async function POST(request: NextRequest) {
         const processingTime = Date.now() - startTime;
 
         // ── Persist conversation to Firestore ───────────────────────
-        const now = Timestamp.now();
+        const userMsg = { role: 'user', content: message, timestamp: Timestamp.now() };
+        const aiMsg = { role: 'model', content: response, timestamp: Timestamp.now() };
 
-        const userMsg = { role: 'user', content: message, timestamp: now };
-        const aiMsg = { role: 'model', content: response, timestamp: now };
-
-        if (convSnap.exists()) {
-            // Append to existing conversation
-            const existingMessages = convSnap.data().messages || [];
+        if (convSnap.exists) {
+            const existingMessages = convSnap.data()!.messages || [];
             let updatedMessages = [...existingMessages, userMsg, aiMsg];
 
-            // Keep history manageable — trim to last 20 messages
             if (updatedMessages.length > 20) {
                 updatedMessages = updatedMessages.slice(-20);
             }
 
-            await updateDoc(convRef, {
+            await convRef.update({
                 messages: updatedMessages,
                 lastIntent: intent.intent,
-                lastMessageAt: now,
+                lastMessageAt: FieldValue.serverTimestamp(),
             });
         } else {
-            // Create new conversation document
-            await setDoc(convRef, {
+            await convRef.set({
                 businessId,
                 customerPhone: customerPhone || null,
                 channel: channel || 'whatsapp',
@@ -104,8 +100,8 @@ export async function POST(request: NextRequest) {
                 handledBy: 'ai',
                 messages: [userMsg, aiMsg],
                 lastIntent: intent.intent,
-                startedAt: now,
-                lastMessageAt: now,
+                startedAt: FieldValue.serverTimestamp(),
+                lastMessageAt: FieldValue.serverTimestamp(),
             });
         }
 
@@ -138,7 +134,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
     return NextResponse.json({
         status: 'AI API is active',
-        model: 'gemini-1.5-pro',
+        model: 'gemini-2.0-flash',
         capabilities: ['chat', 'intent-detection', 'multilingual'],
     });
 }

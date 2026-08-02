@@ -3,6 +3,7 @@
 
 import { initializeApp, getApps, cert, type ServiceAccount } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
 
 /**
  * Firebase Admin SDK — for server-side Firestore access.
@@ -31,6 +32,7 @@ if (!isConfigured) {
 }
 
 let adminDb: FirebaseFirestore.Firestore;
+let adminAuth: import('firebase-admin/auth').Auth;
 
 if (isConfigured) {
     const adminConfig: ServiceAccount = { projectId, clientEmail, privateKey };
@@ -39,8 +41,9 @@ if (isConfigured) {
             ? initializeApp({ credential: cert(adminConfig) })
             : getApps()[0];
     adminDb = getFirestore(adminApp);
+    adminAuth = getAuth(adminApp);
 } else {
-    // Create a proxy that throws meaningful errors instead of crashing on import
+    // Create proxies that throw meaningful errors instead of crashing on import
     adminDb = new Proxy({} as FirebaseFirestore.Firestore, {
         get(_, prop) {
             throw new Error(
@@ -48,6 +51,13 @@ if (isConfigured) {
             );
         },
     });
+    adminAuth = new Proxy({} as import('firebase-admin/auth').Auth, {
+        get(_, prop) {
+            throw new Error(
+                `[Firebase Admin] Cannot use adminAuth.${String(prop)} — credentials not configured.`
+            );
+        },
+    });
 }
 
-export { adminDb, isConfigured as isAdminConfigured };
+export { adminDb, adminAuth, isConfigured as isAdminConfigured };

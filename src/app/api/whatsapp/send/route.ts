@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendWhatsAppMessage, formatWhatsAppNumber, isTwilioConfigured } from '@/lib/twilio';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
- * API endpoint for sending outbound WhatsApp messages (human takeover + notifications)
+ * API endpoint for sending outbound WhatsApp messages (human takeover)
  *
  * POST /api/whatsapp/send
- * Body: { to: string, message: string, mediaUrl?: string, businessId?: string, conversationId?: string }
+ * Body: { conversationId: string, message: string, mediaUrl?: string }
+ *
+ * businessId is always resolved from the authenticated caller's own
+ * account. conversationId must belong to that business, and the
+ * recipient number is taken from the conversation record itself — never
+ * from the request — so a signed-in user can only ever message customers
+ * within their own business's conversations, not an arbitrary number via
+ * the shared Twilio account.
  */
 export async function POST(request: NextRequest) {
     try {
-        // Check if Twilio is configured
         if (!isTwilioConfigured) {
             return NextResponse.json(
                 { error: 'Twilio is not configured. Add credentials to .env.local' },
@@ -19,15 +26,40 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Parse request body
-        const body = await request.json();
-        const { to, message: msg, mediaUrl, businessId, conversationId } = body;
+        if (!isAdminConfigured) {
+            return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+        }
 
-        if (!to || !msg) {
+        const businessId = await resolveOwnBusinessId(request);
+        if (!businessId) {
+            return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+        }
+
+        const body = await request.json();
+        const { message: msg, mediaUrl, conversationId } = body;
+
+        if (!msg || !conversationId) {
             return NextResponse.json(
-                { error: 'Missing required fields: to, message' },
+                { error: 'Missing required fields: conversationId, message' },
                 { status: 400 }
             );
+        }
+
+        const convRef = adminDb
+            .collection('businesses')
+            .doc(businessId)
+            .collection('conversations')
+            .doc(conversationId);
+
+        const convDoc = await convRef.get();
+        if (!convDoc.exists) {
+            return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+        }
+
+        const convData = convDoc.data()!;
+        const to = convData.customerPhone;
+        if (!to) {
+            return NextResponse.json({ error: 'Conversation has no customer phone number' }, { status: 400 });
         }
 
         // Send the message via Twilio
@@ -41,37 +73,25 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: result.error }, { status: 500 });
         }
 
-        // If businessId + conversationId provided, save the sent message to Firestore
-        if (businessId && conversationId && isAdminConfigured) {
-            try {
-                const convRef = adminDb
-                    .collection('businesses')
-                    .doc(businessId)
-                    .collection('conversations')
-                    .doc(conversationId);
+        try {
+            const existingMessages = convData.messages || [];
+            const updatedMessages = [
+                ...existingMessages,
+                {
+                    role: 'model',
+                    content: msg,
+                    timestamp: FieldValue.serverTimestamp(),
+                },
+            ].slice(-20);
 
-                const convDoc = await convRef.get();
-                if (convDoc.exists) {
-                    const existingMessages = convDoc.data()?.messages || [];
-                    const updatedMessages = [
-                        ...existingMessages,
-                        {
-                            role: 'model',
-                            content: msg,
-                            timestamp: FieldValue.serverTimestamp(),
-                        },
-                    ].slice(-20);
-
-                    await convRef.update({
-                        messages: updatedMessages,
-                        handledBy: 'human',
-                        lastMessageAt: FieldValue.serverTimestamp(),
-                    });
-                }
-            } catch (dbErr) {
-                // Log but don't fail the request — message was already sent
-                console.error('[WhatsApp Send] Error saving to Firestore:', dbErr);
-            }
+            await convRef.update({
+                messages: updatedMessages,
+                handledBy: 'human',
+                lastMessageAt: FieldValue.serverTimestamp(),
+            });
+        } catch (dbErr) {
+            // Log but don't fail the request — message was already sent
+            console.error('[WhatsApp Send] Error saving to Firestore:', dbErr);
         }
 
         return NextResponse.json({
@@ -95,7 +115,7 @@ export async function GET() {
         configured: isTwilioConfigured,
         endpoint: '/api/whatsapp/send',
         methods: ['POST'],
-        requiredFields: ['to', 'message'],
-        optionalFields: ['mediaUrl', 'businessId', 'conversationId'],
+        requiredFields: ['conversationId', 'message'],
+        optionalFields: ['mediaUrl'],
     });
 }

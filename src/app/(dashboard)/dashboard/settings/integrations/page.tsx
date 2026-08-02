@@ -228,16 +228,18 @@ export default function IntegrationsPage() {
         fetchBusiness();
     }, [user?.businessId]);
 
-    const handleConnectMeta = () => {
-        if (!business?.id) return;
+    const handleConnectMeta = async () => {
+        if (!business?.id || !user) return;
         setLoading('meta');
-        window.location.href = `/api/integrations/meta/auth?businessId=${business.id}`;
+        const idToken = await user.getIdToken();
+        window.location.href = `/api/integrations/meta/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken)}`;
     };
 
-    const handleConnectCalendar = () => {
-        if (!business?.id) return;
+    const handleConnectCalendar = async () => {
+        if (!business?.id || !user) return;
         setLoading('calendar');
-        window.location.href = `/api/integrations/calendar/auth?businessId=${business.id}`;
+        const idToken = await user.getIdToken();
+        window.location.href = `/api/integrations/calendar/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken)}`;
     };
 
     return (

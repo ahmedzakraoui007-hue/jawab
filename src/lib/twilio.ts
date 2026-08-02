@@ -1,4 +1,5 @@
 import Twilio from 'twilio';
+import type { NextRequest } from 'next/server';
 
 // Twilio credentials from environment
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -120,6 +121,36 @@ export function validateTwilioSignature(
 ): boolean {
     if (!authToken) return false;
 
+    return Twilio.validateRequest(authToken, signature, url, params);
+}
+
+/**
+ * Reconstruct the exact public URL Twilio called, from behind Vercel's proxy.
+ * Twilio's signature is computed over this URL, so it must match exactly
+ * what Twilio dialed (scheme + host + path, no query string).
+ */
+export function getTwilioRequestUrl(request: NextRequest): string {
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const host = request.headers.get('host') || request.nextUrl.host;
+    return `${proto}://${host}${request.nextUrl.pathname}`;
+}
+
+/**
+ * Verify that an incoming webhook request genuinely came from Twilio.
+ * Returns true only when TWILIO_AUTH_TOKEN is configured AND the
+ * X-Twilio-Signature header matches the recomputed signature for this
+ * exact URL + form params.
+ */
+export function verifyTwilioRequest(
+    request: NextRequest,
+    params: Record<string, string>
+): boolean {
+    if (!authToken) return false;
+
+    const signature = request.headers.get('x-twilio-signature');
+    if (!signature) return false;
+
+    const url = getTwilioRequestUrl(request);
     return Twilio.validateRequest(authToken, signature, url, params);
 }
 

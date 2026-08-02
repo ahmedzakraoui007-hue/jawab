@@ -1,41 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createBookingEvent, cancelBookingEvent, Booking } from '@/lib/google-calendar';
-import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, addDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
-
-/**
- * Resolve the businessId for the authenticated user.
- * Checks: (1) explicit query param, (2) user's Firestore doc.
- */
-async function resolveBusinessId(
-    explicitId: string | null | undefined,
-    request: NextRequest
-): Promise<string | null> {
-    if (explicitId) return explicitId;
-
-    const uid = request.headers.get('x-user-uid');
-    if (!uid) return null;
-
-    try {
-        const userDoc = await adminDb.collection('users').doc(uid).get();
-        return userDoc.data()?.businessId || null;
-    } catch {
-        return null;
-    }
-}
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 /**
  * List bookings for a business
- * GET /api/calendar/book?businessId=xxx
+ * GET /api/calendar/book
  */
 export async function GET(request: NextRequest) {
     if (!isAdminConfigured) {
         return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
-    const explicitId = request.nextUrl.searchParams.get('businessId');
-    const businessId = await resolveBusinessId(explicitId, request);
+    const businessId = await resolveOwnBusinessId(request);
 
     if (!businessId) {
         return NextResponse.json({ error: 'businessId required' }, { status: 400 });
@@ -74,12 +52,24 @@ export async function GET(request: NextRequest) {
 /**
  * Create a new booking
  * POST /api/calendar/book
+ *
+ * businessId is always resolved from the authenticated caller's own
+ * account, never trusted from the request body — a signed-in user can
+ * only ever create bookings for their own business.
  */
 export async function POST(request: NextRequest) {
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
+    const businessId = await resolveOwnBusinessId(request);
+    if (!businessId) {
+        return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const {
-            businessId,
             customerName,
             customerPhone,
             customerEmail,
@@ -91,10 +81,9 @@ export async function POST(request: NextRequest) {
             createdVia,
         } = body;
 
-        // Validate required fields
-        if (!businessId || !customerName || !customerPhone || !service || !startTime) {
+        if (!customerName || !customerPhone || !service || !startTime) {
             return NextResponse.json(
-                { error: 'Missing required fields: businessId, customerName, customerPhone, service, startTime' },
+                { error: 'Missing required fields: customerName, customerPhone, service, startTime' },
                 { status: 400 }
             );
         }
@@ -103,7 +92,6 @@ export async function POST(request: NextRequest) {
         const duration = serviceDuration || 60;
         const end = new Date(start.getTime() + duration * 60000);
 
-        // Create booking object
         const booking: Booking = {
             customerName,
             customerPhone,
@@ -118,52 +106,45 @@ export async function POST(request: NextRequest) {
 
         let calendarEventId: string | null = null;
 
-        // Get business data and create calendar event if connected
-        if (db) {
-            try {
-                const businessRef = doc(db, 'businesses', businessId);
-                const businessSnap = await getDoc(businessRef);
+        try {
+            const businessSnap = await adminDb.collection('businesses').doc(businessId).get();
 
-                if (businessSnap.exists()) {
-                    const business = businessSnap.data();
-                    const calendar = business.googleCalendar;
+            if (businessSnap.exists) {
+                const business = businessSnap.data()!;
+                const calendar = business.googleCalendar;
 
-                    if (calendar?.connected && calendar?.accessToken) {
-                        // Create Google Calendar event
-                        calendarEventId = await createBookingEvent(
-                            calendar.accessToken,
-                            calendar.refreshToken,
-                            calendar.calendarId || 'primary',
-                            booking
-                        );
-                        booking.calendarEventId = calendarEventId;
-                    }
+                if (calendar?.connected && calendar?.accessToken) {
+                    calendarEventId = await createBookingEvent(
+                        calendar.accessToken,
+                        calendar.refreshToken,
+                        calendar.calendarId || 'primary',
+                        booking
+                    );
+                    booking.calendarEventId = calendarEventId;
                 }
-
-                // Save booking to Firestore
-                const bookingRef = await addDoc(collection(db, 'bookings'), {
-                    ...booking,
-                    businessId,
-                    price: typeof price === 'number' ? price : 0,
-                    startTime: Timestamp.fromDate(start),
-                    endTime: Timestamp.fromDate(end),
-                    calendarEventId,
-                    createdAt: serverTimestamp(),
-                    createdVia: createdVia || 'api',
-                });
-
-                booking.id = bookingRef.id;
-
-            } catch (dbError) {
-                console.error('[Booking] Firestore error:', dbError);
-                // Continue without Firestore - booking still valid
             }
+
+            const bookingRef = await adminDb.collection('bookings').add({
+                ...booking,
+                businessId,
+                price: typeof price === 'number' ? price : 0,
+                startTime: Timestamp.fromDate(start),
+                endTime: Timestamp.fromDate(end),
+                calendarEventId,
+                createdAt: FieldValue.serverTimestamp(),
+                createdVia: createdVia || 'api',
+            });
+
+            booking.id = bookingRef.id;
+        } catch (dbError) {
+            console.error('[Booking] Firestore error:', dbError);
+            return NextResponse.json({ error: 'Failed to save booking' }, { status: 500 });
         }
 
         return NextResponse.json({
             success: true,
             booking: {
-                id: booking.id || 'demo-' + Date.now(),
+                id: booking.id,
                 customerName,
                 service,
                 startTime: start.toISOString(),
@@ -172,54 +153,55 @@ export async function POST(request: NextRequest) {
                 calendarEventId,
             },
         });
-
     } catch (error) {
         console.error('[Booking API] Error:', error);
-        return NextResponse.json(
-            { error: 'Failed to create booking' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to create booking' }, { status: 500 });
     }
 }
 
 /**
  * Cancel a booking
- * DELETE /api/calendar/book?bookingId=xxx&businessId=xxx
+ * DELETE /api/calendar/book?bookingId=xxx
+ *
+ * The booking's own businessId field must match the authenticated
+ * caller's business — prevents cancelling another business's booking by
+ * guessing a bookingId.
  */
 export async function DELETE(request: NextRequest) {
-    const bookingId = request.nextUrl.searchParams.get('bookingId');
-    const businessId = request.nextUrl.searchParams.get('businessId');
+    if (!isAdminConfigured) {
+        return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
 
-    if (!bookingId || !businessId) {
-        return NextResponse.json(
-            { error: 'Missing bookingId or businessId' },
-            { status: 400 }
-        );
+    const bookingId = request.nextUrl.searchParams.get('bookingId');
+    if (!bookingId) {
+        return NextResponse.json({ error: 'Missing bookingId' }, { status: 400 });
+    }
+
+    const businessId = await resolveOwnBusinessId(request);
+    if (!businessId) {
+        return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
     }
 
     try {
-        if (!db) {
-            return NextResponse.json({ success: true, message: 'Booking cancelled (demo mode)' });
-        }
+        const bookingRef = adminDb.collection('bookings').doc(bookingId);
+        const bookingSnap = await bookingRef.get();
 
-        // Get booking details
-        const bookingRef = doc(db, 'bookings', bookingId);
-        const bookingSnap = await getDoc(bookingRef);
-
-        if (!bookingSnap.exists()) {
+        if (!bookingSnap.exists) {
             return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
         }
 
-        const bookingData = bookingSnap.data();
+        const bookingData = bookingSnap.data()!;
 
-        // Cancel calendar event if exists
+        if (bookingData.businessId !== businessId) {
+            return NextResponse.json({ error: 'Not authorized to cancel this booking' }, { status: 403 });
+        }
+
+        // Cancel calendar event if one exists
         if (bookingData.calendarEventId) {
-            const businessRef = doc(db, 'businesses', businessId);
-            const businessSnap = await getDoc(businessRef);
+            const businessSnap = await adminDb.collection('businesses').doc(businessId).get();
 
-            if (businessSnap.exists()) {
-                const business = businessSnap.data();
-                const calendar = business.googleCalendar;
+            if (businessSnap.exists) {
+                const calendar = businessSnap.data()?.googleCalendar;
 
                 if (calendar?.accessToken) {
                     try {
@@ -236,19 +218,14 @@ export async function DELETE(request: NextRequest) {
             }
         }
 
-        // Update booking status
-        await updateDoc(bookingRef, {
+        await bookingRef.update({
             status: 'cancelled',
-            cancelledAt: serverTimestamp(),
+            cancelledAt: FieldValue.serverTimestamp(),
         });
 
         return NextResponse.json({ success: true, message: 'Booking cancelled' });
-
     } catch (error) {
         console.error('[Booking Cancel] Error:', error);
-        return NextResponse.json(
-            { error: 'Failed to cancel booking' },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: 'Failed to cancel booking' }, { status: 500 });
     }
 }

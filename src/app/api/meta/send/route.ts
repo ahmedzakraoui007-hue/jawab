@@ -4,12 +4,26 @@ import { sendDirectMessage, replyToComment, isMetaConfigured } from '@/lib/meta'
 /**
  * POST /api/meta/send
  * Send outbound messages via Meta platforms
- * 
+ *
  * Body:
  * - recipientId: string (required)
  * - message: string (required)
  * - platform: 'messenger' | 'instagram_dm' (for DMs)
  * - commentId: string (for comment replies)
+ *
+ * SECURITY NOTE: unlike /api/whatsapp/send, this route has no
+ * business-ownership scoping. sendDirectMessage/replyToComment (lib/meta.ts)
+ * send via a single global META_PAGE_ACCESS_TOKEN env var shared by the
+ * whole platform — there is currently no per-business Meta credential used
+ * for sending (even though MetaIntegration.accessToken is modeled per
+ * business in src/lib/types.ts and populated by the OAuth callback, it's
+ * never actually read here). Any authenticated user can currently message
+ * any recipientId/commentId through the shared Page. Properly fixing this
+ * needs lib/meta.ts's send functions to accept and use the calling
+ * business's own stored token instead of the env var — a real feature
+ * change, not a quick patch. This route also has no frontend caller today
+ * (confirmed via repo search), so it is not an active exploit path, but
+ * treat it as unsafe to expose/link to until that's addressed.
  */
 export async function POST(request: NextRequest) {
     try {

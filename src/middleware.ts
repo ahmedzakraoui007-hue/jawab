@@ -15,6 +15,20 @@ const PUBLIC_API_ROUTES = [
     '/api/webhooks',
     '/api/auth',
     '/api/public',
+    // OAuth-initiation routes are reached via a plain browser navigation
+    // (window.location.href), which cannot attach an Authorization header
+    // the way fetch-based calls can. They verify a Firebase ID token passed
+    // as a query param themselves (see src/lib/auth-guard.ts) instead of
+    // relying on this middleware's Bearer-token check.
+    '/api/integrations/calendar/auth',
+    '/api/integrations/meta/auth',
+    // OAuth callbacks are reached via a redirect FROM Google/Meta straight
+    // to the user's browser — there is no Firebase session/token available
+    // at all at this point. Their security comes from the CSRF state-cookie
+    // check plus the membership check already performed at the auth step
+    // above (before the state was ever generated), not from a Bearer token.
+    '/api/integrations/calendar/callback',
+    '/api/integrations/meta/callback',
 ];
 
 // Routes that live outside the [locale] segment — the authenticated app

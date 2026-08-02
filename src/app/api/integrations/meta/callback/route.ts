@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { db } from '@/lib/firebase';
-import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 import { getAppUrl } from '@/lib/utils';
 
 const META_APP_ID = process.env.META_APP_ID;
@@ -58,11 +58,13 @@ export async function GET(request: NextRequest) {
         );
     }
 
-    // Parse state to get businessId
+    // Parse state to get businessId + the uid verified at the auth step
     let businessId: string;
+    let connectedByUid: string | undefined;
     try {
         const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
         businessId = stateData.businessId;
+        connectedByUid = stateData.uid;
     } catch {
         return NextResponse.redirect(
             `${getAppUrl()}/dashboard/settings/integrations?error=invalid_state`
@@ -129,10 +131,12 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // Save to Firestore
-        if (db) {
-            const businessRef = doc(db, 'businesses', businessId);
-            await updateDoc(businessRef, {
+        // Save to Firestore via the Admin SDK — this route runs from a
+        // third-party redirect with no Firebase session available, so the
+        // client SDK (which respects security rules requiring
+        // request.auth != null) would fail here with permission-denied.
+        if (isAdminConfigured) {
+            await adminDb.collection('businesses').doc(businessId).update({
                 meta: {
                     accessToken: page.access_token, // TODO: Encrypt in production
                     pageId: page.id,
@@ -143,7 +147,7 @@ export async function GET(request: NextRequest) {
                         new Date(Date.now() + expiresIn * 1000)
                     ),
                     connectedAt: Timestamp.now(),
-                    connectedBy: 'oauth', // TODO: Get actual user ID from session
+                    connectedBy: connectedByUid || null,
                 },
                 updatedAt: Timestamp.now(),
             });
