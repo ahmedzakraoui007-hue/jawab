@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useCallback, useEffect, useState, ReactNode } from 'react';
 import {
     User,
     signInWithEmailAndPassword,
@@ -319,7 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     // Clear error
-    const clearError = () => setError(null);
+    const clearError = useCallback(() => setError(null), []);
 
     return (
         <AuthContext.Provider
@@ -387,8 +387,14 @@ function getAuthErrorMessage(error: unknown): string {
         case 'auth/quota-exceeded':
             return 'SMS quota exceeded. Please try again later.';
         case 'auth/invalid-api-key':
-            return 'Firebase is not configured. Please add your API keys.';
+        case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
+            return 'Sign-in is not configured yet. Please contact support.';
         default:
+            // Firebase error messages come formatted as "Firebase: Error (auth/some-code)."
+            // Strip that wrapper so we never show raw SDK text to end users.
+            if (err.code) {
+                return 'Something went wrong. Please try again.';
+            }
             return err.message || 'An error occurred. Please try again.';
     }
 }
