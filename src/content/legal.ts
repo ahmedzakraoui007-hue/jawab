@@ -32,10 +32,10 @@ export const TERMS: Record<Locale, LegalDoc> = {
                 ],
             },
             {
-                heading: '3. Subscription Plans, Billing, and Free Trial',
+                heading: '3. Subscription Plans and Billing',
                 body: [
-                    'Jawab offers Starter, Professional, and Business subscription plans, billed monthly or annually, in your selected currency (AED, SAR, QAR, KWD, BHD, or OMR). New accounts may be eligible for a 14-day free trial; unless cancelled before the trial ends, your subscription will convert to a paid plan and be billed automatically.',
-                    "Fees are non-refundable except as required by law or expressly stated at checkout. We may change prices with at least 30 days' notice before your next billing cycle.",
+                    'Jawab publishes Starter, Professional, and Business plan pricing in your selected currency (AED, SAR, QAR, KWD, BHD, or OMR) for reference. Jawab is currently in an early-access period: we do not yet collect payment details or charge any plan automatically through the Service. Where a paid plan applies, it is currently arranged and invoiced directly with our team rather than billed automatically at signup.',
+                    "We will update this section, with reasonable advance notice, once in-app automatic billing becomes available. Until then, no subscription will convert to a paid plan or be charged without you first agreeing to specific payment terms directly with us.",
                 ],
             },
             {
@@ -131,10 +131,10 @@ export const TERMS: Record<Locale, LegalDoc> = {
                 ],
             },
             {
-                heading: '٣. خطط الاشتراك والفوترة والتجربة المجانية',
+                heading: '٣. خطط الاشتراك والفوترة',
                 body: [
-                    'يقدم جواب خطط اشتراك الأساسية والاحترافية والأعمال، تُفوتَر شهرياً أو سنوياً، بالعملة التي تختارها (درهم إماراتي، ريال سعودي، ريال قطري، دينار كويتي، دينار بحريني، أو ريال عماني). قد تكون الحسابات الجديدة مؤهلة لتجربة مجانية لمدة 14 يوماً؛ وما لم يتم الإلغاء قبل انتهاء التجربة، سيتحول اشتراكك إلى خطة مدفوعة وستتم فوترتها تلقائياً.',
-                    'الرسوم غير قابلة للاسترداد إلا إذا تطلب القانون ذلك أو نُصَّ عليه صراحةً عند الدفع. يجوز لنا تغيير الأسعار بإشعار مسبق لا يقل عن 30 يوماً قبل دورة الفوترة التالية.',
+                    'ينشر جواب أسعار خطط الأساسية والاحترافية والأعمال بالعملة التي تختارها (درهم إماراتي، ريال سعودي، ريال قطري، دينار كويتي، دينار بحريني، أو ريال عماني) للاسترشاد بها. جواب حالياً في فترة الوصول المبكر: نحن لا نجمع بيانات الدفع أو نفوتر أي خطة تلقائياً عبر الخدمة في الوقت الحالي. وحيثما تنطبق خطة مدفوعة، يتم حالياً الاتفاق عليها وفوترتها مباشرةً مع فريقنا بدلاً من الفوترة التلقائية عند التسجيل.',
+                    'سنقوم بتحديث هذا القسم، مع إشعار مسبق معقول، فور توفر الفوترة التلقائية داخل التطبيق. وإلى أن يحدث ذلك، لن يتحول أي اشتراك إلى خطة مدفوعة ولن تتم فوترته دون موافقتك أولاً على شروط دفع محددة معنا مباشرةً.',
                 ],
             },
             {
