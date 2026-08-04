@@ -6,6 +6,12 @@ import { getAppUrl } from '@/lib/utils';
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+// Caps how fast one business's Gemini/ElevenLabs budget can be burned by
+// flooded calls — abuse mitigation, not a limit on legitimate call volume.
+const VOICE_RATE_LIMIT = 20;
+const VOICE_RATE_WINDOW_SECONDS = 60;
 
 /**
  * MULTI-TENANT: Get business by voice phone number
@@ -97,6 +103,15 @@ export async function POST(request: NextRequest) {
 
             const { business, businessId } = result;
 
+            const rateLimit = await checkRateLimit(`voice-webhook:${businessId}`, VOICE_RATE_LIMIT, VOICE_RATE_WINDOW_SECONDS);
+            if (!rateLimit.allowed) {
+                console.warn(`[Voice] Rate limit hit for business ${businessId}`);
+                return new NextResponse(
+                    generateTwiML("We're getting a lot of calls right now — please try again in a minute.", false, 'en'),
+                    { headers: { 'Content-Type': 'text/xml' } }
+                );
+            }
+
             // Initialize conversation
             voiceConversations[callSid] = {
                 messages: [],
@@ -161,6 +176,15 @@ export async function POST(request: NextRequest) {
         if (!businessData) {
             return new NextResponse(
                 `<?xml version="1.0" encoding="UTF-8"?><Response><Say>Sorry, an error occurred. Goodbye.</Say><Hangup/></Response>`,
+                { headers: { 'Content-Type': 'text/xml' } }
+            );
+        }
+
+        const turnRateLimit = await checkRateLimit(`voice-webhook:${businessId}`, VOICE_RATE_LIMIT, VOICE_RATE_WINDOW_SECONDS);
+        if (!turnRateLimit.allowed) {
+            console.warn(`[Voice] Rate limit hit mid-call for business ${businessId}`);
+            return new NextResponse(
+                generateTwiML("We're getting a lot of calls right now — please try again in a minute.", false, 'en'),
                 { headers: { 'Content-Type': 'text/xml' } }
             );
         }

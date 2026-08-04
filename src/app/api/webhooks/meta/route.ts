@@ -14,6 +14,12 @@ import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini'
 import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+// Caps how fast one business's Gemini/Graph API budget can be burned by
+// flooded DMs/comments — abuse mitigation, not a limit on legitimate traffic.
+const META_RATE_LIMIT = 20;
+const META_RATE_WINDOW_SECONDS = 60;
 
 /**
  * MULTI-TENANT: Get business by Meta Page ID or Instagram Account ID
@@ -131,6 +137,13 @@ async function processMessage(message: ParsedMetaMessage, pageId: string): Promi
     }
 
     const { business, businessId } = result;
+
+    const rateLimit = await checkRateLimit(`meta-webhook:${businessId}`, META_RATE_LIMIT, META_RATE_WINDOW_SECONDS);
+    if (!rateLimit.allowed) {
+        console.warn(`[Meta] Rate limit hit for business ${businessId}`);
+        return "We're getting a lot of messages right now — please try again in a minute! 🙏";
+    }
+
     const intent = await detectIntent(message.text);
     console.log(`[Meta] Business: ${business.name}, Intent: ${intent.intent}`);
 

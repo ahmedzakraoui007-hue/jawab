@@ -3,6 +3,10 @@ import { sendWhatsAppMessage, formatWhatsAppNumber, isTwilioConfigured } from '@
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue } from 'firebase-admin/firestore';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+const SEND_RATE_LIMIT = 30;
+const SEND_RATE_WINDOW_SECONDS = 60;
 
 /**
  * API endpoint for sending outbound WhatsApp messages (human takeover)
@@ -33,6 +37,14 @@ export async function POST(request: NextRequest) {
         const businessId = await resolveOwnBusinessId(request);
         if (!businessId) {
             return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+        }
+
+        const rateLimit = await checkRateLimit(`whatsapp-send:${businessId}`, SEND_RATE_LIMIT, SEND_RATE_WINDOW_SECONDS);
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: 'Too many requests, please slow down' },
+                { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds || SEND_RATE_WINDOW_SECONDS) } }
+            );
         }
 
         const body = await request.json();

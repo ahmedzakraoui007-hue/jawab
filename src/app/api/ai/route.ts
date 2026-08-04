@@ -4,6 +4,10 @@ import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+const AI_RATE_LIMIT = 30;
+const AI_RATE_WINDOW_SECONDS = 60;
 
 /**
  * Dashboard "test your AI" endpoint — simulates a conversation using the
@@ -20,6 +24,14 @@ export async function POST(request: NextRequest) {
     const businessId = await resolveOwnBusinessId(request);
     if (!businessId) {
         return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+    }
+
+    const rateLimit = await checkRateLimit(`ai:${businessId}`, AI_RATE_LIMIT, AI_RATE_WINDOW_SECONDS);
+    if (!rateLimit.allowed) {
+        return NextResponse.json(
+            { error: 'Too many requests, please slow down' },
+            { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds || AI_RATE_WINDOW_SECONDS) } }
+        );
     }
 
     try {

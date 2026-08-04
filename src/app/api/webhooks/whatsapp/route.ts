@@ -4,6 +4,13 @@ import { parseWhatsAppWebhook, buildTwiMLResponse, isTwilioConfigured, verifyTwi
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+// Caps how fast one business's Gemini/Twilio budget can be burned by a
+// single flooded conversation — this is abuse mitigation, not a spam
+// filter for legitimate customer traffic.
+const WHATSAPP_RATE_LIMIT = 20;
+const WHATSAPP_RATE_WINDOW_SECONDS = 60;
 
 /**
  * TWILIO WEBHOOK SETUP:
@@ -198,6 +205,13 @@ export async function POST(request: NextRequest) {
 
         const { business, businessId } = result;
         console.log(`[WhatsApp] Business: ${business.name} (${businessId})`);
+
+        const rateLimit = await checkRateLimit(`whatsapp-webhook:${businessId}`, WHATSAPP_RATE_LIMIT, WHATSAPP_RATE_WINDOW_SECONDS);
+        if (!rateLimit.allowed) {
+            console.warn(`[WhatsApp] Rate limit hit for business ${businessId}`);
+            const twiml = buildTwiMLResponse("We're getting a lot of messages right now — please try again in a minute! 🙏");
+            return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+        }
 
         // Detect intent first
         const intent = await detectIntent(incoming.body);

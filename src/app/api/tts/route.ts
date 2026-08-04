@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { textToSpeech, detectTextLanguage, getVoiceForLanguage, isElevenLabsConfigured } from '@/lib/elevenlabs';
+import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+
+// Public, unauthenticated (Twilio fetches this mid-call and can't attach
+// an Authorization header — see middleware.ts), and every request costs
+// real ElevenLabs credits, so it needs its own limit independent of any
+// per-business quota.
+const TTS_RATE_LIMIT = 30;
+const TTS_RATE_WINDOW_SECONDS = 60;
 
 /**
  * API endpoint to generate TTS audio
@@ -14,6 +22,14 @@ export async function GET(request: NextRequest) {
 
     if (!text) {
         return NextResponse.json({ error: 'Missing text parameter' }, { status: 400 });
+    }
+
+    const rateLimit = await checkRateLimit(`tts:${getClientIp(request)}`, TTS_RATE_LIMIT, TTS_RATE_WINDOW_SECONDS);
+    if (!rateLimit.allowed) {
+        return NextResponse.json(
+            { error: 'Too many requests, please slow down' },
+            { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds || TTS_RATE_WINDOW_SECONDS) } }
+        );
     }
 
     if (!isElevenLabsConfigured) {
@@ -56,6 +72,14 @@ export async function POST(request: NextRequest) {
 
         if (!text) {
             return NextResponse.json({ error: 'Missing text' }, { status: 400 });
+        }
+
+        const rateLimit = await checkRateLimit(`tts:${getClientIp(request)}`, TTS_RATE_LIMIT, TTS_RATE_WINDOW_SECONDS);
+        if (!rateLimit.allowed) {
+            return NextResponse.json(
+                { error: 'Too many requests, please slow down' },
+                { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds || TTS_RATE_WINDOW_SECONDS) } }
+            );
         }
 
         if (!isElevenLabsConfigured) {
