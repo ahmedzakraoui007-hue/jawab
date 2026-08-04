@@ -29,6 +29,12 @@ const PUBLIC_API_ROUTES = [
     // above (before the state was ever generated), not from a Bearer token.
     '/api/integrations/calendar/callback',
     '/api/integrations/meta/callback',
+    // Twilio's <Play> verb fetches this URL directly from Twilio's servers
+    // during a live call — it can't attach an Authorization header either.
+    // No customer data is exposed (just synthesized speech audio), but this
+    // is a good candidate for rate limiting since each request costs real
+    // ElevenLabs credits.
+    '/api/tts',
 ];
 
 // Routes that live outside the [locale] segment — the authenticated app

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateResponse, buildSystemPrompt } from '@/lib/gemini';
-import { textToSpeech, detectTextLanguage, getVoiceForLanguage, isElevenLabsConfigured } from '@/lib/elevenlabs';
+import { detectTextLanguage, isElevenLabsConfigured } from '@/lib/elevenlabs';
 import { isTwilioConfigured, verifyTwilioRequest } from '@/lib/twilio';
 import { getAppUrl } from '@/lib/utils';
 import { adminDb } from '@/lib/firebase-admin';
@@ -258,30 +258,43 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Generate TwiML response with optional ElevenLabs audio
+ * Build the TwiML <Say> or <Play> markup for one line of speech.
+ * Uses ElevenLabs (via /api/tts) for natural voices when configured,
+ * routed through Twilio's own TwiML request cycle so no separate audio
+ * hosting is needed — Twilio fetches the audio URL itself mid-call.
+ * Falls back to Twilio's built-in Polly voices otherwise.
  */
-function generateTwiML(text: string, continueGather: boolean, language: 'ar' | 'en' = 'en'): string {
-    const escapedText = escapeXml(text);
+function speakVerb(text: string, language: 'ar' | 'en'): string {
+    if (isElevenLabsConfigured) {
+        const audioUrl = `${BASE_URL}/api/tts?text=${encodeURIComponent(text)}&lang=${language}&gender=female`;
+        return `<Play>${escapeXml(audioUrl)}</Play>`;
+    }
 
-    // Select voice based on language
-    // Polly voices: Zeina (Arabic), Joanna (English)
+    const escapedText = escapeXml(text);
     const pollyVoice = language === 'ar' ? 'Polly.Zeina' : 'Polly.Joanna';
     const pollyLang = language === 'ar' ? 'ar-XA' : 'en-US';
+    return `<Say voice="${pollyVoice}" language="${pollyLang}">${escapedText}</Say>`;
+}
 
+/**
+ * Generate TwiML response, using ElevenLabs audio when configured
+ */
+function generateTwiML(text: string, continueGather: boolean, language: 'ar' | 'en' = 'en'): string {
     if (continueGather) {
+        const noInputText = language === 'ar' ? 'لم أسمع شيء. مع السلامة!' : "I didn't hear anything. Goodbye!";
         return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Gather input="speech" timeout="5" speechTimeout="auto" action="/api/webhooks/voice" method="POST" language="${language === 'ar' ? 'ar-SA' : 'en-US'}">
-    <Say voice="${pollyVoice}" language="${pollyLang}">${escapedText}</Say>
+    ${speakVerb(text, language)}
   </Gather>
-  <Say voice="${pollyVoice}" language="${pollyLang}">${language === 'ar' ? 'لم أسمع شيء. مع السلامة!' : 'I didn\'t hear anything. Goodbye!'}</Say>
+  ${speakVerb(noInputText, language)}
   <Hangup/>
 </Response>`;
     }
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="${pollyVoice}" language="${pollyLang}">${escapedText}</Say>
+  ${speakVerb(text, language)}
   <Hangup/>
 </Response>`;
 }
