@@ -135,6 +135,51 @@ Without this, the Voice webhook automatically falls back to Twilio's
 built-in Polly voices — no code change needed either way
 (`src/app/api/webhooks/voice/route.ts`).
 
+## 8. Stripe (billing)
+
+1. Create an account at [dashboard.stripe.com](https://dashboard.stripe.com)
+   (use test-mode keys until you're ready to charge real cards).
+2. **Developers → API keys** → copy the **Secret key** into
+   `STRIPE_SECRET_KEY`.
+3. **Developers → Webhooks → Add endpoint** →
+   `{NEXT_PUBLIC_APP_URL}/api/webhooks/stripe`, listening for
+   `customer.subscription.created`, `customer.subscription.updated`, and
+   `customer.subscription.deleted`. Copy the endpoint's signing secret into
+   `STRIPE_WEBHOOK_SECRET`.
+4. That's it — there's nothing to create in the Stripe dashboard beyond the
+   webhook endpoint. Prices are built on the fly from
+   `src/lib/pricing.ts` (`price_data` on the Checkout Session) rather than
+   36 pre-created Price objects (3 tiers × 6 GCC currencies × 2 intervals),
+   so changing a price is a one-line edit in that file, not a dashboard trip.
+
+Without `STRIPE_SECRET_KEY`, the billing/checkout/portal routes return 503.
+Without `STRIPE_WEBHOOK_SECRET`, the webhook rejects everything (fails
+closed) rather than silently trusting unverified requests. Either way, every
+business is still treated as being on its implicit 14-day trial
+(`src/lib/billing.ts`) — nothing about AI/booking functionality depends on
+Stripe being configured, only on whether the trial/plan is still active.
+
+## 9. Sentry (error monitoring)
+
+1. Create a project at [sentry.io](https://sentry.io) (choose "Next.js" as
+   the platform when prompted, though this app's setup doesn't rely on
+   Sentry's install wizard).
+2. **Settings → Projects → (your project) → Client Keys (DSN)** → copy the
+   DSN into both `SENTRY_DSN` (server/edge) and `NEXT_PUBLIC_SENTRY_DSN`
+   (browser) — same value, two variables, because the client bundle can
+   only see `NEXT_PUBLIC_*`-prefixed vars.
+
+Without either DSN set, `Sentry.init()` runs as an intentional no-op —
+nothing is captured or sent anywhere, and nothing else changes. This setup
+deliberately does **not** wrap `next.config.ts` in `withSentryConfig`
+(which mainly exists for automatic source-map upload) — that plugin needs a
+`SENTRY_AUTH_TOKEN` this environment doesn't have, and added build-time
+overhead wasn't worth it given this app's build is already close to a
+memory ceiling on constrained machines (see Testing & CI below). Runtime
+error capture works fully without it; you'd only be missing de-minified
+stack traces in the Sentry UI, which you can add later by following
+Sentry's Next.js source-maps guide if it turns out to matter.
+
 ## Testing & CI
 
 `npm test` runs the Vitest suite (`src/lib/**/*.test.ts`) — unit tests for
@@ -158,22 +203,26 @@ meant to verify.
 3. Set `NEXT_PUBLIC_APP_URL` to your final production domain once you have
    one — several OAuth redirect URIs and the Twilio signature check depend
    on it matching exactly.
-4. Deploy. Then go back through §4–6 above and register the *actual*
-   deployed webhook/redirect URLs with Twilio/Google/Meta — those steps
-   need a real URL to point at.
+4. Deploy. Then go back through §4–6 and §8 above and register the
+   *actual* deployed webhook/redirect URLs with Twilio/Google/Meta/Stripe —
+   those steps need a real URL to point at.
 
 ## What's still missing for a full production launch
 
 This app does not yet have:
-- **Real subscription billing.** Pricing plans are published for reference
-  only; no payment processor is integrated, and nothing is charged
-  automatically (see `src/content/legal.ts` §3, which now describes this
-  accurately rather than promising auto-billing that doesn't exist).
-- **A dedicated admin UI.** Platform-admin actions today are limited to
-  `/api/admin/numbers`, gated by the `ADMIN_EMAILS` allowlist — there's no
-  UI for it yet, just the API.
 - **Broad test coverage.** CI (see above) covers typecheck, build, and unit
   tests for pure security/formatting logic — it does not cover API routes,
-  React components, or integration-level flows end-to-end.
-- **Error monitoring** (e.g. Sentry). Errors currently only go to
-  `console.error`, which on Vercel means the function logs.
+  React components, Stripe checkout, or integration-level flows end-to-end.
+  None of the billing, usage-limit, admin, or Sentry code added in this
+  pass has been exercised against a real Stripe/Sentry account — there
+  isn't one in this dev environment. Test the checkout → webhook →
+  Firestore round trip with Stripe test-mode keys and a real test card
+  before relying on it.
+- **A self-serve way to change the conversation-limit numbers.** Plan
+  quotas (`PLAN_CONVERSATION_LIMITS` in `src/lib/pricing.ts`) are a code
+  constant, matched to the marketing page's promised numbers — changing
+  them is a one-line edit + deploy, not a dashboard setting.
+- **Multi-currency MRR isn't blended into one number.** The admin
+  dashboard (`/dashboard/admin`) reports MRR per currency rather than
+  guessing at an exchange rate — intentional, not a gap, but worth knowing
+  going in if you expected a single top-line figure.

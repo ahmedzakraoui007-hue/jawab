@@ -3,6 +3,7 @@ import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { isStripeConfigured, createBillingPortalSession } from '@/lib/stripe';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { reportError } from '@/lib/error-reporting';
 
 const PORTAL_RATE_LIMIT = 10;
 const PORTAL_RATE_WINDOW_SECONDS = 60;
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
         const { url } = await createBillingPortalSession({ customerId });
         return NextResponse.json({ url });
     } catch (error) {
-        console.error('[Billing Portal Error]', error);
+        reportError('Billing Portal', error, { businessId });
         return NextResponse.json({ error: 'Failed to open billing portal' }, { status: 500 });
     }
 }

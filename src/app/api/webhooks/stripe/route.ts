@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { constructWebhookEvent, isStripeWebhookConfigured, fromStripeSmallestUnit, type Stripe } from '@/lib/stripe';
 import { Timestamp } from 'firebase-admin/firestore';
+import { reportError } from '@/lib/error-reporting';
 
 /**
  * POST /api/webhooks/stripe
@@ -48,10 +49,10 @@ export async function POST(request: NextRequest) {
                 break;
         }
     } catch (err) {
-        console.error('[Stripe Webhook] Error handling event:', event.type, err);
         // Still 200 — Stripe retries on non-2xx, and retrying a handler
         // error that will just fail again the same way isn't useful. The
-        // error is logged above for investigation.
+        // error is reported below for investigation instead.
+        reportError('Stripe Webhook', err, { eventType: event.type });
     }
 
     return NextResponse.json({ received: true });

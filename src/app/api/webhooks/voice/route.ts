@@ -9,6 +9,7 @@ import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { reportError } from '@/lib/error-reporting';
 
 // Caps how fast one business's Gemini/ElevenLabs budget can be burned by
 // flooded calls — abuse mitigation, not a limit on legitimate call volume.
@@ -303,7 +304,7 @@ export async function POST(request: NextRequest) {
         );
 
     } catch (error) {
-        console.error('[Voice Webhook Error]', error);
+        reportError('Voice Webhook', error);
 
         const errorTwiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>

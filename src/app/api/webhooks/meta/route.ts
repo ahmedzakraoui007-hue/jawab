@@ -18,6 +18,7 @@ import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { reportError } from '@/lib/error-reporting';
 
 // Caps how fast one business's Gemini/Graph API budget can be burned by
 // flooded DMs/comments — abuse mitigation, not a limit on legitimate traffic.
@@ -287,7 +288,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ status: 'ok' });
     } catch (e) {
-        console.error('[Meta Webhook Error]', e);
+        reportError('Meta Webhook', e);
         return NextResponse.json({ status: 'error' });
     }
 }

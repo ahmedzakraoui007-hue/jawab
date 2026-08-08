@@ -32,10 +32,11 @@ export const TERMS: Record<Locale, LegalDoc> = {
                 ],
             },
             {
-                heading: '3. Subscription Plans and Billing',
+                heading: '3. Subscription Plans, Billing, and Free Trial',
                 body: [
-                    'Jawab publishes Starter, Professional, and Business plan pricing in your selected currency (AED, SAR, QAR, KWD, BHD, or OMR) for reference. Jawab is currently in an early-access period: we do not yet collect payment details or charge any plan automatically through the Service. Where a paid plan applies, it is currently arranged and invoiced directly with our team rather than billed automatically at signup.',
-                    "We will update this section, with reasonable advance notice, once in-app automatic billing becomes available. Until then, no subscription will convert to a paid plan or be charged without you first agreeing to specific payment terms directly with us.",
+                    'Jawab offers Starter, Professional, and Business subscription plans, billed monthly or annually, in your selected currency (AED, SAR, QAR, KWD, BHD, or OMR). New accounts receive a 14-day free trial with no payment details required upfront. After the trial ends, continued use of the Service requires an active paid subscription; if you have not subscribed by then, AI responses and bookings will pause until you do.',
+                    'Payments are processed by Stripe. When you subscribe, you authorize Jawab, via Stripe, to charge your payment method automatically at the start of each billing period until you cancel. You can view your subscription, update your payment method, or cancel at any time from your dashboard billing settings, which uses a Stripe-hosted portal — cancellation takes effect at the end of your current billing period.',
+                    "Fees are non-refundable except as required by law or expressly stated at checkout. We may change prices with at least 30 days' notice before your next billing cycle.",
                 ],
             },
             {
@@ -131,10 +132,11 @@ export const TERMS: Record<Locale, LegalDoc> = {
                 ],
             },
             {
-                heading: '٣. خطط الاشتراك والفوترة',
+                heading: '٣. خطط الاشتراك والفوترة والتجربة المجانية',
                 body: [
-                    'ينشر جواب أسعار خطط الأساسية والاحترافية والأعمال بالعملة التي تختارها (درهم إماراتي، ريال سعودي، ريال قطري، دينار كويتي، دينار بحريني، أو ريال عماني) للاسترشاد بها. جواب حالياً في فترة الوصول المبكر: نحن لا نجمع بيانات الدفع أو نفوتر أي خطة تلقائياً عبر الخدمة في الوقت الحالي. وحيثما تنطبق خطة مدفوعة، يتم حالياً الاتفاق عليها وفوترتها مباشرةً مع فريقنا بدلاً من الفوترة التلقائية عند التسجيل.',
-                    'سنقوم بتحديث هذا القسم، مع إشعار مسبق معقول، فور توفر الفوترة التلقائية داخل التطبيق. وإلى أن يحدث ذلك، لن يتحول أي اشتراك إلى خطة مدفوعة ولن تتم فوترته دون موافقتك أولاً على شروط دفع محددة معنا مباشرةً.',
+                    'يقدم جواب خطط اشتراك الأساسية والاحترافية والأعمال، تُفوتَر شهرياً أو سنوياً، بالعملة التي تختارها (درهم إماراتي، ريال سعودي، ريال قطري، دينار كويتي، دينار بحريني، أو ريال عماني). تحصل الحسابات الجديدة على تجربة مجانية لمدة 14 يوماً دون الحاجة إلى بيانات دفع مسبقاً. بعد انتهاء التجربة، يتطلب استمرار استخدام الخدمة اشتراكاً مدفوعاً نشطاً؛ إذا لم تشترك بحلول ذلك الوقت، سيتوقف ردود الذكاء الاصطناعي والحجوزات مؤقتاً حتى تفعل ذلك.',
+                    'تتم معالجة المدفوعات عبر Stripe. عند اشتراكك، فإنك تفوّض جواب، عبر Stripe، بخصم قيمة اشتراكك تلقائياً من وسيلة الدفع الخاصة بك في بداية كل دورة فوترة إلى أن تقوم بالإلغاء. يمكنك عرض اشتراكك أو تحديث وسيلة الدفع أو الإلغاء في أي وقت من إعدادات الفوترة في لوحة التحكم، والتي تستخدم بوابة مستضافة عبر Stripe — ويسري الإلغاء اعتباراً من نهاية دورة الفوترة الحالية.',
+                    'الرسوم غير قابلة للاسترداد إلا إذا تطلب القانون ذلك أو نُصَّ عليه صراحةً عند الدفع. يجوز لنا تغيير الأسعار بإشعار مسبق لا يقل عن 30 يوماً قبل دورة الفوترة التالية.',
                 ],
             },
             {

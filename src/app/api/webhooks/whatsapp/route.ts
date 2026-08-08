@@ -7,6 +7,7 @@ import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { reportError } from '@/lib/error-reporting';
 
 // Caps how fast one business's Gemini/Twilio budget can be burned by a
 // single flooded conversation — this is abuse mitigation, not a spam
@@ -279,7 +280,7 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (error) {
-        console.error('[WhatsApp Webhook Error]', error);
+        reportError('WhatsApp Webhook', error);
 
         const errorTwiml = buildTwiMLResponse(
             "I'm sorry, I'm having a moment. Please try again! 🙏"

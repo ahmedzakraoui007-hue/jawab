@@ -7,6 +7,7 @@ import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { reportError } from '@/lib/error-reporting';
 
 const AI_RATE_LIMIT = 30;
 const AI_RATE_WINDOW_SECONDS = 60;
@@ -155,7 +156,7 @@ export async function POST(request: NextRequest) {
             },
         });
     } catch (error) {
-        console.error('[AI API Error]', error);
+        reportError('AI API', error, { businessId });
         return NextResponse.json(
             {
                 success: false,

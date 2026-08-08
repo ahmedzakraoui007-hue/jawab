@@ -5,6 +5,7 @@ import { isStripeConfigured, getOrCreateStripeCustomer, createCheckoutSession } 
 import { PLAN_TIERS, CURRENCIES, type PlanTier, type CurrencyCode } from '@/lib/pricing';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { Timestamp } from 'firebase-admin/firestore';
+import { reportError } from '@/lib/error-reporting';
 
 const CHECKOUT_RATE_LIMIT = 10;
 const CHECKOUT_RATE_WINDOW_SECONDS = 60;
@@ -83,7 +84,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ url });
     } catch (error) {
-        console.error('[Billing Checkout Error]', error);
+        reportError('Billing Checkout', error, { businessId });
         return NextResponse.json({ error: 'Failed to start checkout' }, { status: 500 });
     }
 }
