@@ -53,9 +53,13 @@ times.
 
 Set `ADMIN_EMAILS` to a comma-separated allowlist of the email addresses
 that should be able to reassign/remove phone numbers between businesses
-(`/api/admin/numbers`). This is a fixed env-var allowlist, not a Firestore
-role — there is no per-user "admin" flag in the data model. Leaving it unset
-disables the admin routes entirely (they fail closed, not open).
+(`/api/admin/numbers`) and change plan conversation limits
+(`/api/admin/plan-limits`, surfaced in the admin dashboard's "Plan
+conversation limits" card — overriding a tier there takes effect
+immediately, no deploy). This is a fixed env-var allowlist, not a
+Firestore role — there is no per-user "admin" flag in the data model.
+Leaving it unset disables the admin routes entirely (they fail closed,
+not open).
 
 ## 4. Twilio — WhatsApp + Voice (optional, enables those channels)
 
@@ -229,10 +233,6 @@ This app does not yet have:
   isn't one in this dev environment. Test the checkout → webhook →
   Firestore round trip with Stripe test-mode keys and a real test card
   before relying on it.
-- **A self-serve way to change the conversation-limit numbers.** Plan
-  quotas (`PLAN_CONVERSATION_LIMITS` in `src/lib/pricing.ts`) are a code
-  constant, matched to the marketing page's promised numbers — changing
-  them is a one-line edit + deploy, not a dashboard setting.
 - **Multi-currency MRR isn't blended into one number.** The admin
   dashboard (`/dashboard/admin`) reports MRR per currency rather than
   guessing at an exchange rate — intentional, not a gap, but worth knowing
