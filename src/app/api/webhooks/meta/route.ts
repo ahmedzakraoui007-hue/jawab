@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
     verifyWebhook,
     verifyMetaSignature,
+    isMetaConfigured,
     isMetaSignatureVerificationEnabled,
     parseWebhookPayload,
     sendDirectMessage,
@@ -151,7 +152,7 @@ async function processMessage(
         console.warn(`[Meta] Business ${businessId} billing status is ${billing.status} — refusing`);
         return "We're sorry, this business's account is currently inactive. Please contact them directly.";
     }
-    const usage = await checkAndIncrementUsage(businessId, billing.plan);
+    const usage = await checkAndIncrementUsage(businessId, billing.plan, business);
     if (!usage.allowed) {
         console.warn(`[Meta] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
         return "Thanks for reaching out! This business has reached its monthly message limit — please try again later.";
@@ -261,6 +262,19 @@ export async function POST(request: NextRequest) {
                         accessToken: business.meta?.accessToken,
                         instagramAccountId: business.meta?.instagramAccountId,
                     };
+
+                    // A business that never completed its own Meta OAuth
+                    // connect has no token of its own. Rather than replying
+                    // as whatever Page the shared operator token belongs to,
+                    // skip it — unless the deployment has explicitly opted
+                    // into the shared-token fallback (single-tenant pilot).
+                    if (!metaCreds.accessToken && !isMetaConfigured) {
+                        console.error(
+                            `[Meta] Business ${businessId} has no connected Meta account and the shared-token ` +
+                            'fallback is disabled — skipping message rather than replying as another Page.'
+                        );
+                        continue;
+                    }
 
                     if (!message.isPublic) await sendTypingIndicator(message.senderId, 'typing_on', metaCreds.accessToken);
 

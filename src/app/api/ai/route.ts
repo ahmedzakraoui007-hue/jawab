@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
                 { status: 402 }
             );
         }
-        const usage = await checkAndIncrementUsage(businessId, billing.plan);
+        const usage = await checkAndIncrementUsage(businessId, billing.plan, business);
         if (!usage.allowed) {
             return NextResponse.json(
                 { success: false, error: { code: 'USAGE_LIMIT_REACHED', message: `You've reached your plan's monthly conversation limit (${usage.limit}). Upgrade to continue.` } },

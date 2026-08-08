@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
             const billing = resolveEffectiveBilling(data);
             statusCounts[billing.status]++;
 
-            const usage = await getCurrentUsage(doc.id, billing.plan);
+            const usage = await getCurrentUsage(doc.id, billing.plan, data);
 
             if (billing.status === 'active' && data.billing?.amount && data.billing?.currency) {
                 // data.billing.amount is whatever Stripe actually charges per

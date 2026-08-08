@@ -13,7 +13,22 @@ const META_VERIFY_TOKEN = process.env.META_VERIFY_TOKEN || 'jawab_verify_token';
 const INSTAGRAM_ACCOUNT_ID = process.env.INSTAGRAM_ACCOUNT_ID;
 const FACEBOOK_PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 
-export const isMetaConfigured = !!META_ACCESS_TOKEN;
+/**
+ * Whether a business with no Meta account of its own may fall back to the
+ * single shared META_PAGE_ACCESS_TOKEN.
+ *
+ * This is OFF unless explicitly opted into, because the fallback is a
+ * cross-tenant hazard: with it on, every business that hasn't completed
+ * its own OAuth connect sends as — and can therefore read/act on behalf
+ * of — whichever Page that one env-var token belongs to. That is correct
+ * for exactly one deployment shape (a single-tenant pilot where the token
+ * IS the operator's own Page) and wrong for every other one, so it has to
+ * be a deliberate choice rather than a silent default.
+ */
+export const isSharedMetaFallbackEnabled = process.env.META_ALLOW_SHARED_TOKEN === 'true';
+
+/** True only when a shared token exists AND using it is actually permitted. */
+export const isMetaConfigured = !!META_ACCESS_TOKEN && isSharedMetaFallbackEnabled;
 export const isMetaSignatureVerificationEnabled = !!META_APP_SECRET;
 
 const GRAPH_API_VERSION = 'v18.0';
@@ -177,6 +192,62 @@ export interface MetaCredentials {
     instagramAccountId?: string;
 }
 
+export type MetaTokenSource = 'business' | 'shared' | 'none';
+
+export interface ResolvedMetaToken {
+    token: string | null;
+    source: MetaTokenSource;
+}
+
+/**
+ * Single choke point for "which access token does this Graph API call use?".
+ *
+ * Every outbound Meta call goes through here rather than reaching for the
+ * module-level env var directly, so there is exactly one place where the
+ * business-token-vs-shared-token decision is made and one place to audit.
+ *
+ * `overrides` exists so the decision logic is unit-testable without
+ * process.env gymnastics — production callers pass nothing and get the
+ * env-derived defaults.
+ */
+export function resolveMetaAccessToken(
+    credentials?: MetaCredentials,
+    context?: string,
+    overrides?: { sharedToken?: string; allowSharedFallback?: boolean }
+): ResolvedMetaToken {
+    if (credentials?.accessToken) {
+        return { token: credentials.accessToken, source: 'business' };
+    }
+
+    const sharedToken = overrides?.sharedToken !== undefined ? overrides.sharedToken : META_ACCESS_TOKEN;
+    const allowShared =
+        overrides?.allowSharedFallback !== undefined ? overrides.allowSharedFallback : isSharedMetaFallbackEnabled;
+
+    if (sharedToken && allowShared) {
+        console.warn(
+            `[Meta] ${context || 'request'}: no per-business token, using the SHARED META_PAGE_ACCESS_TOKEN. ` +
+            'This acts as the operator\'s own Page — only valid for single-tenant pilot use.'
+        );
+        return { token: sharedToken, source: 'shared' };
+    }
+
+    if (sharedToken && !allowShared) {
+        console.error(
+            `[Meta] ${context || 'request'}: business has not connected its own Meta account. ` +
+            'A shared token exists but META_ALLOW_SHARED_TOKEN is not "true", so it will not be used.'
+        );
+    }
+
+    return { token: null, source: 'none' };
+}
+
+/** Instagram account to send as: the business's own, or the shared one only
+ * when the shared-token fallback is actually in play. */
+function resolveInstagramAccountId(credentials: MetaCredentials | undefined, source: MetaTokenSource): string | undefined {
+    if (credentials?.instagramAccountId) return credentials.instagramAccountId;
+    return source === 'shared' ? INSTAGRAM_ACCOUNT_ID : undefined;
+}
+
 /**
  * Send a DM via Messenger or Instagram
  */
@@ -186,13 +257,16 @@ export async function sendDirectMessage(
     platform: 'messenger' | 'instagram_dm' = 'messenger',
     credentials?: MetaCredentials
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    const accessToken = credentials?.accessToken || META_ACCESS_TOKEN;
+    const { token: accessToken, source } = resolveMetaAccessToken(credentials, 'sendDirectMessage');
     if (!accessToken) {
-        console.error('[Meta] Access token not configured');
-        return { success: false, error: 'Meta access token not configured' };
+        return { success: false, error: 'This business has not connected its Meta account' };
     }
 
-    const igAccountId = credentials?.instagramAccountId || INSTAGRAM_ACCOUNT_ID;
+    const igAccountId = resolveInstagramAccountId(credentials, source);
+    if (platform === 'instagram_dm' && !igAccountId) {
+        return { success: false, error: 'No Instagram account connected for this business' };
+    }
+
     const endpoint = platform === 'instagram_dm'
         ? `${GRAPH_API_BASE}/${igAccountId}/messages`
         : `${GRAPH_API_BASE}/me/messages`;
@@ -234,10 +308,9 @@ export async function replyToComment(
     text: string,
     accessToken?: string
 ): Promise<{ success: boolean; commentId?: string; error?: string }> {
-    const token = accessToken || META_ACCESS_TOKEN;
+    const { token } = resolveMetaAccessToken({ accessToken }, 'replyToComment');
     if (!token) {
-        console.error('[Meta] Access token not configured');
-        return { success: false, error: 'Meta access token not configured' };
+        return { success: false, error: 'This business has not connected its Meta account' };
     }
 
     try {
@@ -269,13 +342,15 @@ export async function replyToComment(
  * Get user profile information
  */
 export async function getUserProfile(
-    userId: string
+    userId: string,
+    credentials?: MetaCredentials
 ): Promise<{ name?: string; profilePic?: string } | null> {
-    if (!META_ACCESS_TOKEN) return null;
+    const { token } = resolveMetaAccessToken(credentials, 'getUserProfile');
+    if (!token) return null;
 
     try {
         const response = await fetch(
-            `${GRAPH_API_BASE}/${userId}?fields=name,profile_pic&access_token=${META_ACCESS_TOKEN}`
+            `${GRAPH_API_BASE}/${userId}?fields=name,profile_pic&access_token=${token}`
         );
 
         if (response.ok) {
@@ -292,12 +367,16 @@ export async function getUserProfile(
 /**
  * Get media URL from attachment ID
  */
-export async function getMediaUrl(attachmentId: string): Promise<string | null> {
-    if (!META_ACCESS_TOKEN) return null;
+export async function getMediaUrl(
+    attachmentId: string,
+    credentials?: MetaCredentials
+): Promise<string | null> {
+    const { token } = resolveMetaAccessToken(credentials, 'getMediaUrl');
+    if (!token) return null;
 
     try {
         const response = await fetch(
-            `${GRAPH_API_BASE}/${attachmentId}?fields=url&access_token=${META_ACCESS_TOKEN}`
+            `${GRAPH_API_BASE}/${attachmentId}?fields=url&access_token=${token}`
         );
 
         if (response.ok) {
@@ -318,14 +397,21 @@ export async function sendQuickReplies(
     recipientId: string,
     text: string,
     quickReplies: Array<{ title: string; payload: string }>,
-    platform: 'messenger' | 'instagram_dm' = 'messenger'
+    platform: 'messenger' | 'instagram_dm' = 'messenger',
+    credentials?: MetaCredentials
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!META_ACCESS_TOKEN) {
-        return { success: false, error: 'Meta access token not configured' };
+    const { token, source } = resolveMetaAccessToken(credentials, 'sendQuickReplies');
+    if (!token) {
+        return { success: false, error: 'This business has not connected its Meta account' };
+    }
+
+    const igAccountId = resolveInstagramAccountId(credentials, source);
+    if (platform === 'instagram_dm' && !igAccountId) {
+        return { success: false, error: 'No Instagram account connected for this business' };
     }
 
     const endpoint = platform === 'instagram_dm'
-        ? `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}/messages`
+        ? `${GRAPH_API_BASE}/${igAccountId}/messages`
         : `${GRAPH_API_BASE}/me/messages`;
 
     try {
@@ -333,7 +419,7 @@ export async function sendQuickReplies(
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
                 recipient: { id: recipientId },
@@ -369,7 +455,7 @@ export async function sendTypingIndicator(
     action: 'typing_on' | 'typing_off' | 'mark_seen' = 'typing_on',
     accessToken?: string
 ): Promise<void> {
-    const token = accessToken || META_ACCESS_TOKEN;
+    const { token } = resolveMetaAccessToken({ accessToken }, 'sendTypingIndicator');
     if (!token) return;
 
     try {

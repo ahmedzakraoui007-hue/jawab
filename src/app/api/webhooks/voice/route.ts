@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
                     { headers: { 'Content-Type': 'text/xml' } }
                 );
             }
-            const usage = await checkAndIncrementUsage(businessId, billing.plan);
+            const usage = await checkAndIncrementUsage(businessId, billing.plan, business);
             if (!usage.allowed) {
                 console.warn(`[Voice] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
                 return new NextResponse(
@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
                 { headers: { 'Content-Type': 'text/xml' } }
             );
         }
-        const turnUsage = await checkAndIncrementUsage(businessId!, turnBilling.plan);
+        const turnUsage = await checkAndIncrementUsage(businessId!, turnBilling.plan, businessData);
         if (!turnUsage.allowed) {
             console.warn(`[Voice] Business ${businessId} hit its monthly conversation limit (${turnUsage.limit})`);
             return new NextResponse(

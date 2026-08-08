@@ -1,11 +1,19 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
-import { PLAN_CONVERSATION_LIMITS, type PlanTier } from '@/lib/pricing';
+import type { PlanTier } from '@/lib/pricing';
+import { getConversationLimit, type LimitSource } from '@/lib/plan-limits';
 
 export interface UsageCheckResult {
     allowed: boolean;
     used: number;
     limit: number;
+    limitSource: LimitSource;
+}
+
+/** Duck-typed — every caller already has the business doc in hand from its
+ * own Firestore read; this is just the one field usage.ts actually needs. */
+interface BusinessLimitInput {
+    planOverrides?: { conversationLimit?: unknown } | null;
 }
 
 function currentPeriodKey(): string {
@@ -28,13 +36,14 @@ function currentPeriodKey(): string {
  */
 export async function checkAndIncrementUsage(
     businessId: string,
-    plan: PlanTier
+    plan: PlanTier,
+    business?: BusinessLimitInput
 ): Promise<UsageCheckResult> {
-    const limit = PLAN_CONVERSATION_LIMITS[plan];
+    const { limit, source } = await getConversationLimit(plan, business);
 
     // Unlimited plan — skip the transaction/read entirely.
     if (!Number.isFinite(limit)) {
-        return { allowed: true, used: 0, limit };
+        return { allowed: true, used: 0, limit, limitSource: source };
     }
 
     const period = currentPeriodKey();
@@ -50,7 +59,7 @@ export async function checkAndIncrementUsage(
             const used = snap.exists ? (snap.data()?.conversationCount as number) || 0 : 0;
 
             if (used >= limit) {
-                return { allowed: false, used, limit };
+                return { allowed: false, used, limit, limitSource: source };
             }
 
             if (snap.exists) {
@@ -59,19 +68,23 @@ export async function checkAndIncrementUsage(
                 tx.set(ref, { period, conversationCount: 1, updatedAt: Timestamp.now() });
             }
 
-            return { allowed: true, used: used + 1, limit };
+            return { allowed: true, used: used + 1, limit, limitSource: source };
         });
     } catch (err) {
         console.error('[usage] checkAndIncrementUsage failed, failing open:', err);
         // Same philosophy as rate-limit.ts: a usage-tracking outage should
         // never be the reason a real customer gets refused service.
-        return { allowed: true, used: 0, limit };
+        return { allowed: true, used: 0, limit, limitSource: source };
     }
 }
 
 /** Read-only usage lookup for the dashboard/admin views — does not increment. */
-export async function getCurrentUsage(businessId: string, plan: PlanTier): Promise<UsageCheckResult> {
-    const limit = PLAN_CONVERSATION_LIMITS[plan];
+export async function getCurrentUsage(
+    businessId: string,
+    plan: PlanTier,
+    business?: BusinessLimitInput
+): Promise<UsageCheckResult> {
+    const { limit, source } = await getConversationLimit(plan, business);
     const period = currentPeriodKey();
 
     try {
@@ -83,9 +96,9 @@ export async function getCurrentUsage(businessId: string, plan: PlanTier): Promi
             .get();
 
         const used = snap.exists ? (snap.data()?.conversationCount as number) || 0 : 0;
-        return { allowed: !Number.isFinite(limit) || used < limit, used, limit };
+        return { allowed: !Number.isFinite(limit) || used < limit, used, limit, limitSource: source };
     } catch (err) {
         console.error('[usage] getCurrentUsage failed:', err);
-        return { allowed: true, used: 0, limit };
+        return { allowed: true, used: 0, limit, limitSource: source };
     }
 }

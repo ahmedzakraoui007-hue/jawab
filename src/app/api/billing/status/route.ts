@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
         const business = businessSnap.data()!;
         const billing = resolveEffectiveBilling(business);
-        const usage = await getCurrentUsage(businessId, billing.plan);
+        const usage = await getCurrentUsage(businessId, billing.plan, business);
 
         return NextResponse.json({
             plan: billing.plan,

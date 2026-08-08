@@ -16,14 +16,22 @@ import {
     Modal,
     Form,
     Input,
+    InputNumber,
     Select,
     message,
     Progress,
     Space,
 } from 'antd';
-import { PhoneOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PhoneOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons';
+import { PLAN_TIERS, type PlanTier } from '@/lib/pricing';
 
-const { Title, Text } = Typography;
+const { Title, Text, Paragraph } = Typography;
+
+const PLAN_LABEL: Record<PlanTier, string> = {
+    starter: 'Starter',
+    professional: 'Professional',
+    business: 'Business',
+};
 
 interface BusinessSummary {
     id: string;
@@ -63,6 +71,42 @@ export default function AdminPage() {
     const [form] = Form.useForm();
     const [submitting, setSubmitting] = useState(false);
 
+    // Deliberately not just `Record<PlanTier, number | null>` — that can't
+    // distinguish "no override, use the default" from "override set to
+    // unlimited" (both would otherwise be represented as null/empty).
+    interface PlanLimitRow { override: boolean; unlimited: boolean; value: number }
+    const [planDefaults, setPlanDefaults] = useState<Record<PlanTier, number | null>>({ starter: null, professional: null, business: null });
+    const [planLimitRows, setPlanLimitRows] = useState<Record<PlanTier, PlanLimitRow>>({
+        starter: { override: false, unlimited: false, value: 0 },
+        professional: { override: false, unlimited: false, value: 0 },
+        business: { override: false, unlimited: false, value: 0 },
+    });
+    const [savingLimits, setSavingLimits] = useState(false);
+
+    const fetchPlanLimits = useCallback(async () => {
+        try {
+            const res = await authFetch('/api/admin/plan-limits');
+            if (!res.ok) return;
+            const data: { overrides: Partial<Record<PlanTier, number | null>>; defaults: Record<PlanTier, number | null> } = await res.json();
+            setPlanDefaults(data.defaults);
+            setPlanLimitRows((prev) => {
+                const next = { ...prev };
+                for (const plan of PLAN_TIERS) {
+                    const overridden = plan in data.overrides;
+                    const overrideValue = data.overrides[plan];
+                    next[plan] = {
+                        override: overridden,
+                        unlimited: overridden && overrideValue === null,
+                        value: overridden && typeof overrideValue === 'number' ? overrideValue : (data.defaults[plan] ?? 0),
+                    };
+                }
+                return next;
+            });
+        } catch (err) {
+            console.error('[Admin] Failed to load plan limits:', err);
+        }
+    }, []);
+
     const fetchStats = useCallback(async () => {
         try {
             const res = await authFetch('/api/admin/stats');
@@ -82,7 +126,41 @@ export default function AdminPage() {
 
     useEffect(() => {
         fetchStats();
-    }, [fetchStats]);
+        fetchPlanLimits();
+    }, [fetchStats, fetchPlanLimits]);
+
+    const handleSavePlanLimits = async () => {
+        setSavingLimits(true);
+        try {
+            const overrides: Partial<Record<PlanTier, number | null>> = {};
+            for (const plan of PLAN_TIERS) {
+                const row = planLimitRows[plan];
+                if (row.override) overrides[plan] = row.unlimited ? null : row.value;
+            }
+
+            const res = await authFetch('/api/admin/plan-limits', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ overrides }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                message.success('Plan limits saved — takes effect immediately');
+                fetchStats();
+            } else {
+                message.error(data.error || 'Failed to save plan limits');
+            }
+        } catch (err) {
+            console.error('[Admin] Save plan limits error:', err);
+            message.error('Failed to save plan limits');
+        } finally {
+            setSavingLimits(false);
+        }
+    };
+
+    const updatePlanLimitRow = (plan: PlanTier, patch: Partial<PlanLimitRow>) => {
+        setPlanLimitRows((prev) => ({ ...prev, [plan]: { ...prev[plan], ...patch } }));
+    };
 
     const handleAssignNumber = async (values: { type: 'whatsapp' | 'phone'; number: string; sid?: string }) => {
         if (!numberModal) return;
@@ -249,6 +327,58 @@ export default function AdminPage() {
                     <Card><Statistic title="Past due / Expired" value={(stats.statusCounts.past_due || 0) + (stats.statusCounts.expired || 0)} /></Card>
                 </Col>
             </Row>
+
+            <Card title="Plan conversation limits" style={{ marginBottom: 24 }}>
+                <Paragraph type="secondary" style={{ marginTop: -8 }}>
+                    Overrides the monthly conversation cap for every business on a plan, platform-wide — no deploy
+                    needed, takes effect immediately. Leave a plan unchecked to use the code default (the number on
+                    the public pricing page).
+                </Paragraph>
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    {PLAN_TIERS.map((plan) => {
+                        const row = planLimitRows[plan];
+                        const defaultLabel = Number.isFinite(planDefaults[plan]) ? `${planDefaults[plan]}/mo` : 'Unlimited';
+                        return (
+                            <Space key={plan} align="center" wrap>
+                                <input
+                                    type="checkbox"
+                                    checked={row.override}
+                                    onChange={(e) => updatePlanLimitRow(plan, { override: e.target.checked })}
+                                    style={{ width: 15, height: 15 }}
+                                />
+                                <Text strong style={{ width: 110, display: 'inline-block' }}>{PLAN_LABEL[plan]}</Text>
+                                <Text type="secondary" style={{ fontSize: 12, width: 130 }}>Default: {defaultLabel}</Text>
+                                <InputNumber
+                                    min={0}
+                                    value={row.value}
+                                    disabled={!row.override || row.unlimited}
+                                    onChange={(v) => updatePlanLimitRow(plan, { value: typeof v === 'number' ? v : 0 })}
+                                    addonAfter="conversations/mo"
+                                />
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={row.unlimited}
+                                        disabled={!row.override}
+                                        onChange={(e) => updatePlanLimitRow(plan, { unlimited: e.target.checked })}
+                                        style={{ width: 15, height: 15 }}
+                                    />
+                                    Unlimited
+                                </label>
+                            </Space>
+                        );
+                    })}
+                </Space>
+                <Button
+                    type="primary"
+                    icon={<SaveOutlined />}
+                    onClick={handleSavePlanLimits}
+                    loading={savingLimits}
+                    style={{ marginTop: 16 }}
+                >
+                    Save plan limits
+                </Button>
+            </Card>
 
             <Card title={`Businesses (${stats.totalBusinesses})`}>
                 <Table

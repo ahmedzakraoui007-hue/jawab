@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
             const twiml = buildTwiMLResponse("We're sorry, this business's Jawab account is currently inactive. Please contact them directly.");
             return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
         }
-        const usage = await checkAndIncrementUsage(businessId, billing.plan);
+        const usage = await checkAndIncrementUsage(businessId, billing.plan, business);
         if (!usage.allowed) {
             console.warn(`[WhatsApp] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
             const twiml = buildTwiMLResponse("Thanks for reaching out! This business has reached its monthly message limit — please try again later or contact them directly.");

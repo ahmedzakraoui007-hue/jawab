@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createHmac } from 'crypto';
-import { verifyMetaSignature, verifyWebhook, parseWebhookPayload, type MetaWebhookEntry } from '@/lib/meta';
+import {
+    verifyMetaSignature,
+    verifyWebhook,
+    parseWebhookPayload,
+    resolveMetaAccessToken,
+    type MetaWebhookEntry,
+} from '@/lib/meta';
 
 // Set in vitest.setup.ts before any module import.
 const APP_SECRET = 'test-meta-app-secret';
@@ -145,5 +151,66 @@ describe('parseWebhookPayload', () => {
         }];
 
         expect(parseWebhookPayload('page', entries)).toHaveLength(0);
+    });
+});
+
+describe('resolveMetaAccessToken', () => {
+    const SHARED = 'shared-operator-page-token';
+
+    it("uses the business's own token when it has one", () => {
+        const result = resolveMetaAccessToken({ accessToken: 'biz-token' }, 'test', {
+            sharedToken: SHARED,
+            allowSharedFallback: true,
+        });
+        expect(result).toEqual({ token: 'biz-token', source: 'business' });
+    });
+
+    it("prefers the business's own token even when the shared fallback is enabled", () => {
+        // The dangerous ordering bug would be shared-first; assert explicitly
+        // that a connected business is never routed through the shared Page.
+        const result = resolveMetaAccessToken({ accessToken: 'biz-token' }, 'test', {
+            sharedToken: SHARED,
+            allowSharedFallback: true,
+        });
+        expect(result.token).not.toBe(SHARED);
+    });
+
+    it('refuses to fall back to the shared token by default', () => {
+        const result = resolveMetaAccessToken(undefined, 'test', {
+            sharedToken: SHARED,
+            allowSharedFallback: false,
+        });
+        expect(result).toEqual({ token: null, source: 'none' });
+    });
+
+    it('treats an empty-string business token as no token at all', () => {
+        const result = resolveMetaAccessToken({ accessToken: '' }, 'test', {
+            sharedToken: SHARED,
+            allowSharedFallback: false,
+        });
+        expect(result.source).toBe('none');
+    });
+
+    it('uses the shared token only when explicitly opted in', () => {
+        const result = resolveMetaAccessToken(undefined, 'test', {
+            sharedToken: SHARED,
+            allowSharedFallback: true,
+        });
+        expect(result).toEqual({ token: SHARED, source: 'shared' });
+    });
+
+    it('returns no token when opted in but no shared token is configured', () => {
+        const result = resolveMetaAccessToken(undefined, 'test', {
+            sharedToken: undefined,
+            allowSharedFallback: true,
+        });
+        expect(result).toEqual({ token: null, source: 'none' });
+    });
+
+    it('defaults to refusing the fallback with no env vars set in this suite', () => {
+        // vitest.setup.ts sets META_APP_SECRET but neither
+        // META_PAGE_ACCESS_TOKEN nor META_ALLOW_SHARED_TOKEN — i.e. the
+        // shape of a correctly-configured multi-tenant deployment.
+        expect(resolveMetaAccessToken(undefined, 'test').source).toBe('none');
     });
 });

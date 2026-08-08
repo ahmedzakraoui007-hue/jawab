@@ -22,9 +22,9 @@ const META_SEND_RATE_WINDOW_SECONDS = 60;
  * (business.meta.accessToken/instagramAccountId, populated by the OAuth
  * callback) rather than the single global META_PAGE_ACCESS_TOKEN — so a
  * signed-in user can only ever send as their own connected Page/IG account.
- * Falls back to the global token only if a business hasn't connected its
- * own Meta account yet, matching the single-tenant/pilot deployment case
- * documented in DEPLOYMENT.md.
+ * A business that hasn't connected its own Meta account is refused here
+ * rather than silently borrowing the shared operator token — that fallback
+ * now requires META_ALLOW_SHARED_TOKEN=true (see lib/meta.ts).
  */
 export async function POST(request: NextRequest) {
     try {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
         if (!metaCreds.accessToken && !isMetaConfigured) {
             return NextResponse.json(
-                { error: 'Meta is not connected for this business' },
+                { error: 'Connect this business\'s Facebook/Instagram account before sending' },
                 { status: 503 }
             );
         }

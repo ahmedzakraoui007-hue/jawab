@@ -118,12 +118,23 @@ than showing fabricated open slots.
    `pages_messaging` permission for any Page you don't personally admin.
    Development-mode apps only work for admins/testers added to the app.
 
+### Multi-tenancy: `META_PAGE_ACCESS_TOKEN` vs. per-business tokens
+
 Message sending uses each business's own stored Page/IG token
 (`business.meta.accessToken`/`instagramAccountId`, populated by the OAuth
-callback in §6 above), so each business only ever sends as its own connected
-Page — `META_PAGE_ACCESS_TOKEN` is now just a fallback for a business that
-hasn't connected its own Meta account yet (useful for a quick single-tenant
-deployment without going through OAuth per business).
+callback above), so each business only ever sends as its own connected Page.
+
+A business that has **not** connected its own Meta account has no token. By
+default it is refused — the webhook skips its messages and `/api/meta/send`
+returns 503 — rather than falling back to `META_PAGE_ACCESS_TOKEN`. That
+fallback would make every unconnected business send as, and act on behalf
+of, whichever single Page that env var belongs to.
+
+Set `META_ALLOW_SHARED_TOKEN=true` to re-enable the fallback. Do this only
+for a single-tenant pilot where that Page is your own. Every use of it logs
+a warning naming the call site. In any deployment serving more than one
+business, leave it unset and have each business complete the OAuth connect
+in **Dashboard → Settings → Integrations**.
 
 ## 7. ElevenLabs — natural voice for phone calls (optional)
 
