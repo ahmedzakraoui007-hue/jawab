@@ -118,12 +118,12 @@ than showing fabricated open slots.
    `pages_messaging` permission for any Page you don't personally admin.
    Development-mode apps only work for admins/testers added to the app.
 
-**Known limitation:** message *sending* currently uses the single global
-`META_PAGE_ACCESS_TOKEN` for every business rather than a per-business
-token, even though the data model has room for one (`business.meta.accessToken`).
-This means all businesses on one deployment currently share one Meta Page —
-fine for a single-tenant or pilot deployment, not yet correct for true
-multi-tenant production use of this channel.
+Message sending uses each business's own stored Page/IG token
+(`business.meta.accessToken`/`instagramAccountId`, populated by the OAuth
+callback in §6 above), so each business only ever sends as its own connected
+Page — `META_PAGE_ACCESS_TOKEN` is now just a fallback for a business that
+hasn't connected its own Meta account yet (useful for a quick single-tenant
+deployment without going through OAuth per business).
 
 ## 7. ElevenLabs — natural voice for phone calls (optional)
 

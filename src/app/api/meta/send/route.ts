@@ -1,35 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendDirectMessage, replyToComment, isMetaConfigured } from '@/lib/meta';
+import { sendDirectMessage, replyToComment, isMetaConfigured, type MetaCredentials } from '@/lib/meta';
+import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
+import { resolveOwnBusinessId } from '@/lib/auth-guard';
+import { checkRateLimit } from '@/lib/rate-limit';
+
+const META_SEND_RATE_LIMIT = 30;
+const META_SEND_RATE_WINDOW_SECONDS = 60;
 
 /**
  * POST /api/meta/send
- * Send outbound messages via Meta platforms
+ * Send outbound messages via Meta platforms (human takeover)
  *
  * Body:
- * - recipientId: string (required)
+ * - recipientId: string (required for DMs)
  * - message: string (required)
  * - platform: 'messenger' | 'instagram_dm' (for DMs)
  * - commentId: string (for comment replies)
  *
- * SECURITY NOTE: unlike /api/whatsapp/send, this route has no
- * business-ownership scoping. sendDirectMessage/replyToComment (lib/meta.ts)
- * send via a single global META_PAGE_ACCESS_TOKEN env var shared by the
- * whole platform — there is currently no per-business Meta credential used
- * for sending (even though MetaIntegration.accessToken is modeled per
- * business in src/lib/types.ts and populated by the OAuth callback, it's
- * never actually read here). Any authenticated user can currently message
- * any recipientId/commentId through the shared Page. Properly fixing this
- * needs lib/meta.ts's send functions to accept and use the calling
- * business's own stored token instead of the env var — a real feature
- * change, not a quick patch. This route also has no frontend caller today
- * (confirmed via repo search), so it is not an active exploit path, but
- * treat it as unsafe to expose/link to until that's addressed.
+ * businessId is always resolved from the authenticated caller's own
+ * account, and the send uses that business's own stored Meta credentials
+ * (business.meta.accessToken/instagramAccountId, populated by the OAuth
+ * callback) rather than the single global META_PAGE_ACCESS_TOKEN — so a
+ * signed-in user can only ever send as their own connected Page/IG account.
+ * Falls back to the global token only if a business hasn't connected its
+ * own Meta account yet, matching the single-tenant/pilot deployment case
+ * documented in DEPLOYMENT.md.
  */
 export async function POST(request: NextRequest) {
     try {
-        if (!isMetaConfigured) {
+        if (!isAdminConfigured) {
+            return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+        }
+
+        const businessId = await resolveOwnBusinessId(request);
+        if (!businessId) {
+            return NextResponse.json({ error: 'No business associated with this account' }, { status: 403 });
+        }
+
+        const rateLimit = await checkRateLimit(`meta-send:${businessId}`, META_SEND_RATE_LIMIT, META_SEND_RATE_WINDOW_SECONDS);
+        if (!rateLimit.allowed) {
             return NextResponse.json(
-                { error: 'Meta API not configured' },
+                { error: 'Too many requests, please slow down' },
+                { status: 429, headers: { 'Retry-After': String(rateLimit.retryAfterSeconds || META_SEND_RATE_WINDOW_SECONDS) } }
+            );
+        }
+
+        const businessSnap = await adminDb.collection('businesses').doc(businessId).get();
+        if (!businessSnap.exists) {
+            return NextResponse.json({ error: 'Business not found' }, { status: 404 });
+        }
+
+        const business = businessSnap.data()!;
+        const metaCreds: MetaCredentials = {
+            accessToken: business.meta?.accessToken,
+            instagramAccountId: business.meta?.instagramAccountId,
+        };
+
+        if (!metaCreds.accessToken && !isMetaConfigured) {
+            return NextResponse.json(
+                { error: 'Meta is not connected for this business' },
                 { status: 503 }
             );
         }
@@ -46,7 +75,7 @@ export async function POST(request: NextRequest) {
 
         // Reply to comment
         if (commentId) {
-            const result = await replyToComment(commentId, message);
+            const result = await replyToComment(commentId, message, metaCreds.accessToken);
             if (result.success) {
                 return NextResponse.json({
                     success: true,
@@ -72,7 +101,8 @@ export async function POST(request: NextRequest) {
         const result = await sendDirectMessage(
             recipientId,
             message,
-            platform || 'messenger'
+            platform || 'messenger',
+            metaCreds
         );
 
         if (result.success) {

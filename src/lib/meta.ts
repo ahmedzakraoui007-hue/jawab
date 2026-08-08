@@ -169,21 +169,32 @@ export function parseWebhookPayload(
     return messages;
 }
 
+/** Per-business Meta credentials, as stored on business.meta by the OAuth
+ * callback. Pass these so a send acts as that business's own Page/IG
+ * account rather than the single global fallback credential. */
+export interface MetaCredentials {
+    accessToken?: string;
+    instagramAccountId?: string;
+}
+
 /**
  * Send a DM via Messenger or Instagram
  */
 export async function sendDirectMessage(
     recipientId: string,
     text: string,
-    platform: 'messenger' | 'instagram_dm' = 'messenger'
+    platform: 'messenger' | 'instagram_dm' = 'messenger',
+    credentials?: MetaCredentials
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-    if (!META_ACCESS_TOKEN) {
+    const accessToken = credentials?.accessToken || META_ACCESS_TOKEN;
+    if (!accessToken) {
         console.error('[Meta] Access token not configured');
         return { success: false, error: 'Meta access token not configured' };
     }
 
+    const igAccountId = credentials?.instagramAccountId || INSTAGRAM_ACCOUNT_ID;
     const endpoint = platform === 'instagram_dm'
-        ? `${GRAPH_API_BASE}/${INSTAGRAM_ACCOUNT_ID}/messages`
+        ? `${GRAPH_API_BASE}/${igAccountId}/messages`
         : `${GRAPH_API_BASE}/me/messages`;
 
     try {
@@ -191,7 +202,7 @@ export async function sendDirectMessage(
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+                'Authorization': `Bearer ${accessToken}`,
             },
             body: JSON.stringify({
                 recipient: { id: recipientId },
@@ -220,9 +231,11 @@ export async function sendDirectMessage(
  */
 export async function replyToComment(
     commentId: string,
-    text: string
+    text: string,
+    accessToken?: string
 ): Promise<{ success: boolean; commentId?: string; error?: string }> {
-    if (!META_ACCESS_TOKEN) {
+    const token = accessToken || META_ACCESS_TOKEN;
+    if (!token) {
         console.error('[Meta] Access token not configured');
         return { success: false, error: 'Meta access token not configured' };
     }
@@ -232,7 +245,7 @@ export async function replyToComment(
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({ message: text }),
         });
@@ -353,16 +366,18 @@ export async function sendQuickReplies(
  */
 export async function sendTypingIndicator(
     recipientId: string,
-    action: 'typing_on' | 'typing_off' | 'mark_seen' = 'typing_on'
+    action: 'typing_on' | 'typing_off' | 'mark_seen' = 'typing_on',
+    accessToken?: string
 ): Promise<void> {
-    if (!META_ACCESS_TOKEN) return;
+    const token = accessToken || META_ACCESS_TOKEN;
+    if (!token) return;
 
     try {
         await fetch(`${GRAPH_API_BASE}/me/messages`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${META_ACCESS_TOKEN}`,
+                'Authorization': `Bearer ${token}`,
             },
             body: JSON.stringify({
                 recipient: { id: recipientId },

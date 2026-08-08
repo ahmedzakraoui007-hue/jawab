@@ -9,6 +9,7 @@ import {
     sendTypingIndicator,
     ParsedMetaMessage,
     MetaWebhookEntry,
+    MetaCredentials,
 } from '@/lib/meta';
 import { generateResponse, buildSystemPrompt, detectIntent } from '@/lib/gemini';
 import { adminDb } from '@/lib/firebase-admin';
@@ -124,19 +125,17 @@ async function saveMessage(
 }
 
 /**
- * Process message with MULTI-TENANT business lookup
+ * Generate the AI's reply for an already-resolved business. Business
+ * resolution now happens once in POST (it's needed before this point too,
+ * to pick the right Meta credentials for the typing indicator), so this
+ * takes the resolved business directly instead of looking it up again.
  */
-async function processMessage(message: ParsedMetaMessage, pageId: string): Promise<string | null> {
-    console.log(`[Meta] ${message.platform} from ${message.senderId}: "${message.text}" (page: ${pageId})`);
-
-    // MULTI-TENANT: Get business by Page ID
-    const result = await getBusinessByMetaId(pageId);
-    if (!result) {
-        console.error('[Meta] No business found, cannot process message');
-        return null;
-    }
-
-    const { business, businessId } = result;
+async function processMessage(
+    message: ParsedMetaMessage,
+    business: FirebaseFirestore.DocumentData,
+    businessId: string
+): Promise<string | null> {
+    console.log(`[Meta] ${message.platform} from ${message.senderId}: "${message.text}" (business: ${businessId})`);
 
     const rateLimit = await checkRateLimit(`meta-webhook:${businessId}`, META_RATE_LIMIT, META_RATE_WINDOW_SECONDS);
     if (!rateLimit.allowed) {
@@ -234,24 +233,39 @@ export async function POST(request: NextRequest) {
 
             for (const message of messages) {
                 try {
-                    if (!message.isPublic) await sendTypingIndicator(message.senderId, 'typing_on');
+                    // MULTI-TENANT: resolve the business once, up front, so
+                    // every Graph API call below (typing indicator, send)
+                    // uses that business's own Page/IG token instead of the
+                    // single global fallback credential.
+                    const bizResult = await getBusinessByMetaId(pageId);
+                    if (!bizResult) {
+                        console.error('[Meta] No business found, cannot process message');
+                        continue;
+                    }
+                    const { business, businessId } = bizResult;
+                    const metaCreds: MetaCredentials = {
+                        accessToken: business.meta?.accessToken,
+                        instagramAccountId: business.meta?.instagramAccountId,
+                    };
 
-                    // Pass pageId for multi-tenant routing
-                    const aiResponse = await processMessage(message, pageId);
+                    if (!message.isPublic) await sendTypingIndicator(message.senderId, 'typing_on', metaCreds.accessToken);
 
-                    if (!aiResponse) continue; // Skip if no business found
+                    const aiResponse = await processMessage(message, business, businessId);
+
+                    if (!aiResponse) continue;
 
                     if (message.isPublic && message.commentId) {
-                        await replyToComment(message.commentId, aiResponse);
+                        await replyToComment(message.commentId, aiResponse, metaCreds.accessToken);
                     } else {
                         await sendDirectMessage(
                             message.senderId,
                             aiResponse,
-                            message.platform === 'instagram_dm' ? 'instagram_dm' : 'messenger'
+                            message.platform === 'instagram_dm' ? 'instagram_dm' : 'messenger',
+                            metaCreds
                         );
                     }
 
-                    if (!message.isPublic) await sendTypingIndicator(message.senderId, 'typing_off');
+                    if (!message.isPublic) await sendTypingIndicator(message.senderId, 'typing_off', metaCreds.accessToken);
                 } catch (e) {
                     console.error(`[Meta] Error processing ${message.senderId}:`, e);
                 }
