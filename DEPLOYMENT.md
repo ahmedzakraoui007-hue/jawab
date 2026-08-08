@@ -135,6 +135,20 @@ Without this, the Voice webhook automatically falls back to Twilio's
 built-in Polly voices — no code change needed either way
 (`src/app/api/webhooks/voice/route.ts`).
 
+## Testing & CI
+
+`npm test` runs the Vitest suite (`src/lib/**/*.test.ts`) — unit tests for
+the security-critical pure logic that's easy to get subtly wrong:
+signature verification (Twilio, Meta), the admin email allowlist, rate-limit
+IP parsing, and language/formatting helpers. These don't need any real
+credentials — they test the functions directly, not live API calls.
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`: `tsc --noEmit`,
+`npm test`, then `npm run build`, all with zero configured secrets — every
+integration in this app fails closed when its env vars are unset (rather
+than crashing), so a clean build with no `.env` file is exactly what CI is
+meant to verify.
+
 ## Deploying (Vercel)
 
 1. Import the repo at [vercel.com/new](https://vercel.com/new).
@@ -158,7 +172,8 @@ This app does not yet have:
 - **A dedicated admin UI.** Platform-admin actions today are limited to
   `/api/admin/numbers`, gated by the `ADMIN_EMAILS` allowlist — there's no
   UI for it yet, just the API.
-- **Automated tests / CI.** Changes are currently verified manually via
-  `npx tsc --noEmit` and `npm run build` before each commit.
+- **Broad test coverage.** CI (see above) covers typecheck, build, and unit
+  tests for pure security/formatting logic — it does not cover API routes,
+  React components, or integration-level flows end-to-end.
 - **Error monitoring** (e.g. Sentry). Errors currently only go to
   `console.error`, which on Vercel means the function logs.
