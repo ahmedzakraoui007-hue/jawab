@@ -37,6 +37,7 @@ import {
     MenuUnfoldOutlined,
     SearchOutlined,
     CreditCardOutlined,
+    SafetyOutlined,
 } from '@ant-design/icons';
 
 const { Sider, Header, Content } = Layout;
@@ -143,6 +144,11 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             key: '/dashboard/settings',
             icon: <SettingOutlined />,
             label: <Link href="/dashboard/settings">Settings</Link>,
+        },
+        {
+            key: '/dashboard/admin',
+            icon: <SafetyOutlined />,
+            label: <Link href="/dashboard/admin">Admin</Link>,
         },
     ];
 
