@@ -5,6 +5,8 @@ import { adminDb, isAdminConfigured } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 // Caps how fast one business's Gemini/Twilio budget can be burned by a
 // single flooded conversation — this is abuse mitigation, not a spam
@@ -210,6 +212,20 @@ export async function POST(request: NextRequest) {
         if (!rateLimit.allowed) {
             console.warn(`[WhatsApp] Rate limit hit for business ${businessId}`);
             const twiml = buildTwiMLResponse("We're getting a lot of messages right now — please try again in a minute! 🙏");
+            return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+        }
+
+        // Billing/usage gate — checked before spending anything on Gemini.
+        const billing = resolveEffectiveBilling(business);
+        if (!isUsageAllowed(billing.status)) {
+            console.warn(`[WhatsApp] Business ${businessId} billing status is ${billing.status} — refusing`);
+            const twiml = buildTwiMLResponse("We're sorry, this business's Jawab account is currently inactive. Please contact them directly.");
+            return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
+        }
+        const usage = await checkAndIncrementUsage(businessId, billing.plan);
+        if (!usage.allowed) {
+            console.warn(`[WhatsApp] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
+            const twiml = buildTwiMLResponse("Thanks for reaching out! This business has reached its monthly message limit — please try again later or contact them directly.");
             return new NextResponse(twiml, { headers: { 'Content-Type': 'text/xml' } });
         }
 

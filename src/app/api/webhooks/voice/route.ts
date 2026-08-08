@@ -7,6 +7,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 // Caps how fast one business's Gemini/ElevenLabs budget can be burned by
 // flooded calls — abuse mitigation, not a limit on legitimate call volume.
@@ -112,6 +114,23 @@ export async function POST(request: NextRequest) {
                 );
             }
 
+            const billing = resolveEffectiveBilling(business);
+            if (!isUsageAllowed(billing.status)) {
+                console.warn(`[Voice] Business ${businessId} billing status is ${billing.status} — refusing call`);
+                return new NextResponse(
+                    generateTwiML("We're sorry, this business's account is currently inactive. Goodbye.", false, 'en'),
+                    { headers: { 'Content-Type': 'text/xml' } }
+                );
+            }
+            const usage = await checkAndIncrementUsage(businessId, billing.plan);
+            if (!usage.allowed) {
+                console.warn(`[Voice] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
+                return new NextResponse(
+                    generateTwiML("We're sorry, this business has reached its monthly limit. Please try again later.", false, 'en'),
+                    { headers: { 'Content-Type': 'text/xml' } }
+                );
+            }
+
             // Initialize conversation
             voiceConversations[callSid] = {
                 messages: [],
@@ -185,6 +204,23 @@ export async function POST(request: NextRequest) {
             console.warn(`[Voice] Rate limit hit mid-call for business ${businessId}`);
             return new NextResponse(
                 generateTwiML("We're getting a lot of calls right now — please try again in a minute.", false, 'en'),
+                { headers: { 'Content-Type': 'text/xml' } }
+            );
+        }
+
+        const turnBilling = resolveEffectiveBilling(businessData);
+        if (!isUsageAllowed(turnBilling.status)) {
+            console.warn(`[Voice] Business ${businessId} billing status is ${turnBilling.status} — ending call`);
+            return new NextResponse(
+                generateTwiML("We're sorry, this business's account is currently inactive. Goodbye.", false, 'en'),
+                { headers: { 'Content-Type': 'text/xml' } }
+            );
+        }
+        const turnUsage = await checkAndIncrementUsage(businessId!, turnBilling.plan);
+        if (!turnUsage.allowed) {
+            console.warn(`[Voice] Business ${businessId} hit its monthly conversation limit (${turnUsage.limit})`);
+            return new NextResponse(
+                generateTwiML("We're sorry, this business has reached its monthly limit. Please try again later.", false, 'en'),
                 { headers: { 'Content-Type': 'text/xml' } }
             );
         }

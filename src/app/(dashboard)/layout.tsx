@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { UsageBanner } from '@/components/dashboard/UsageBanner';
+import { authFetch } from '@/lib/auth-fetch';
 import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import {
@@ -34,6 +36,7 @@ import {
     MenuFoldOutlined,
     MenuUnfoldOutlined,
     SearchOutlined,
+    CreditCardOutlined,
 } from '@ant-design/icons';
 
 const { Sider, Header, Content } = Layout;
@@ -48,6 +51,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const [businessName, setBusinessName] = useState<string>('');
     const [businessInitials, setBusinessInitials] = useState<string>('');
     const [unreadCount, setUnreadCount] = useState(0);
+    const [planLabel, setPlanLabel] = useState<string>('');
 
     // Fetch business name from Firestore
     useEffect(() => {
@@ -85,6 +89,24 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         fetchUnread();
     }, [user?.businessId]);
 
+    // Fetch plan label for the sidebar footer
+    useEffect(() => {
+        async function fetchPlan() {
+            if (!user?.businessId) return;
+            try {
+                const res = await authFetch('/api/billing/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    const name = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
+                    setPlanLabel(data.status === 'trialing' ? `${name} (Trial)` : `${name} Plan`);
+                }
+            } catch (err) {
+                console.error('Error fetching plan:', err);
+            }
+        }
+        fetchPlan();
+    }, [user?.businessId]);
+
     // Navigation items (inside component to use dynamic unreadCount)
     const menuItems: MenuProps['items'] = [
         {
@@ -111,6 +133,11 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             key: '/dashboard/analytics',
             icon: <BarChartOutlined />,
             label: <Link href="/dashboard/analytics">Analytics</Link>,
+        },
+        {
+            key: '/dashboard/settings/billing',
+            icon: <CreditCardOutlined />,
+            label: <Link href="/dashboard/settings/billing">Billing</Link>,
         },
         {
             key: '/dashboard/settings',
@@ -270,7 +297,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                                     {businessName || 'My Business'}
                                 </Text>
                                 <Text type="secondary" style={{ fontSize: 12 }}>
-                                    Professional Plan
+                                    {planLabel || ' '}
                                 </Text>
                             </div>
                         </div>
@@ -348,6 +375,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
                     minHeight: 'calc(100vh - 64px)',
                 }}>
                     <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+                        <UsageBanner />
                         {children}
                     </div>
                 </Content>

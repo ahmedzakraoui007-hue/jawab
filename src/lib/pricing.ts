@@ -35,3 +35,37 @@ export const PLAN_PRICING: Record<CurrencyCode, { monthly: number[]; annualMonth
 };
 
 export const CURRENCY_STORAGE_KEY = 'jawab_currency';
+
+/**
+ * The three paid plan tiers, in the same order as PLAN_PRICING's arrays
+ * (index 0 = Starter, 1 = Professional, 2 = Business).
+ */
+export const PLAN_TIERS = ['starter', 'professional', 'business'] as const;
+export type PlanTier = (typeof PLAN_TIERS)[number];
+
+/**
+ * Monthly conversation quota per plan — the exact numbers promised on the
+ * marketing pricing page (src/i18n/dictionaries/{en,ar}.ts). Keep these in
+ * sync with that copy; usage enforcement (src/lib/usage.ts) reads this
+ * directly so the two can never silently drift apart again.
+ */
+export const PLAN_CONVERSATION_LIMITS: Record<PlanTier, number> = {
+    starter: 500,
+    professional: 2000,
+    business: Infinity,
+};
+
+export function getPlanTierIndex(plan: PlanTier): number {
+    return PLAN_TIERS.indexOf(plan);
+}
+
+/** Monthly-equivalent price for a plan/currency/interval, in the currency's smallest unit is NOT applied here — this returns the face-value amount (e.g. 349 for 349 AED). */
+export function getPlanPrice(
+    plan: PlanTier,
+    currency: CurrencyCode,
+    interval: 'monthly' | 'annual'
+): number {
+    const idx = getPlanTierIndex(plan);
+    const table = PLAN_PRICING[currency];
+    return interval === 'annual' ? table.annualMonthly[idx] : table.monthly[idx];
+}

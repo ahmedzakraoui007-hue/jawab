@@ -18,8 +18,17 @@ service cloud.firestore {
     // Businesses — authenticated members only
     match /businesses/{businessId} {
       allow read: if request.auth != null && isBusinessMember(businessId);
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null && isBusinessMember(businessId);
+      // `billing` is never client-writable, on create OR update — it holds
+      // real Stripe subscription state, and only the signature-verified
+      // Stripe webhook (via the Admin SDK, which bypasses these rules
+      // entirely) is allowed to set it. Without this, any signed-in owner
+      // could set their own business's billing.status to "active" for a
+      // free subscription. A business with no `billing` field is treated
+      // as an implicit trial by the app (see src/lib/billing.ts).
+      allow create: if request.auth != null && !('billing' in request.resource.data);
+      allow update: if request.auth != null && isBusinessMember(businessId)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['billing']);
+      allow delete: if request.auth != null && isBusinessMember(businessId);
       
       // Conversations subcollection — business members only
       match /conversations/{conversationId} {

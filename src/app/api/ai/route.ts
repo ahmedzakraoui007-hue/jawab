@@ -5,6 +5,8 @@ import { resolveOwnBusinessId } from '@/lib/auth-guard';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 const AI_RATE_LIMIT = 30;
 const AI_RATE_WINDOW_SECONDS = 60;
@@ -50,6 +52,22 @@ export async function POST(request: NextRequest) {
         }
 
         const business = businessSnap.data()!;
+
+        // ── Billing/usage gate ────────────────────────────────────────
+        const billing = resolveEffectiveBilling(business);
+        if (!isUsageAllowed(billing.status)) {
+            return NextResponse.json(
+                { success: false, error: { code: 'BILLING_INACTIVE', message: `Your account is currently ${billing.status}. Please check your billing settings.` } },
+                { status: 402 }
+            );
+        }
+        const usage = await checkAndIncrementUsage(businessId, billing.plan);
+        if (!usage.allowed) {
+            return NextResponse.json(
+                { success: false, error: { code: 'USAGE_LIMIT_REACHED', message: `You've reached your plan's monthly conversation limit (${usage.limit}). Upgrade to continue.` } },
+                { status: 402 }
+            );
+        }
 
         // ── Load conversation history from Firestore ────────────────
         const convId = conversationId || `conv_${Date.now()}`;

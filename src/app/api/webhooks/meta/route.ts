@@ -16,6 +16,8 @@ import { adminDb } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { BookingContext } from '@/lib/booking-actions';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { resolveEffectiveBilling, isUsageAllowed } from '@/lib/billing';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 // Caps how fast one business's Gemini/Graph API budget can be burned by
 // flooded DMs/comments — abuse mitigation, not a limit on legitimate traffic.
@@ -141,6 +143,17 @@ async function processMessage(
     if (!rateLimit.allowed) {
         console.warn(`[Meta] Rate limit hit for business ${businessId}`);
         return "We're getting a lot of messages right now — please try again in a minute! 🙏";
+    }
+
+    const billing = resolveEffectiveBilling(business);
+    if (!isUsageAllowed(billing.status)) {
+        console.warn(`[Meta] Business ${businessId} billing status is ${billing.status} — refusing`);
+        return "We're sorry, this business's account is currently inactive. Please contact them directly.";
+    }
+    const usage = await checkAndIncrementUsage(businessId, billing.plan);
+    if (!usage.allowed) {
+        console.warn(`[Meta] Business ${businessId} hit its monthly conversation limit (${usage.limit})`);
+        return "Thanks for reaching out! This business has reached its monthly message limit — please try again later.";
     }
 
     const intent = await detectIntent(message.text);
