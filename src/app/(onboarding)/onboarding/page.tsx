@@ -19,8 +19,7 @@ import {
     AlertCircle,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { db } from '@/lib/firebase';
-import { doc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { backendFetch } from '@/lib/backend-fetch';
 
 const steps = [
     { id: 1, title: 'Business Info', icon: Building },
@@ -43,7 +42,7 @@ const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'
 
 export default function OnboardingPage() {
     const router = useRouter();
-    const { user } = useAuth();
+    const { user, refreshUser } = useAuth();
     const [currentStep, setCurrentStep] = useState(1);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -106,16 +105,13 @@ export default function OnboardingPage() {
     };
 
     const handleComplete = async () => {
-        if (!user || !db) return;
+        if (!user) return;
 
         setIsLoading(true);
         setError(null);
 
         try {
-            const businessId = `biz_${user.uid}`;
-            const now = Timestamp.now();
-
-            // Transform hours into Firestore format
+            // Transform hours into the shape the backend expects
             const hours: Record<string, { open: string; close: string } | null> = {};
             for (const day of days) {
                 const h = businessData.hours[day];
@@ -131,38 +127,38 @@ export default function OnboardingPage() {
                     duration: Number(s.duration) || 45,
                 }));
 
-            // Create business document
-            await setDoc(doc(db, 'businesses', businessId), {
-                id: businessId,
-                ownerId: user.uid,
-                name: businessData.name.trim(),
-                industry: businessData.industry || 'other',
-                description: businessData.description.trim(),
-                address: businessData.address.trim(),
-                location: `${businessData.area.trim()}, ${businessData.city.trim()}`.replace(/^, |, $/, ''),
-                timezone: 'Asia/Dubai',
-                hours,
-                services,
-                customFaqs: [],
-                tone: 'friendly',
-                staffIds: [user.uid],
-                googleMapsLink: businessData.googleMapsLink.trim() || null,
-                whatsappNumberRequested: businessData.whatsappNumberRequested.trim() || null,
-                createdAt: now,
-                updatedAt: now,
+            const res = await backendFetch('/businesses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: businessData.name.trim(),
+                    industry: businessData.industry || 'other',
+                    description: businessData.description.trim(),
+                    address: businessData.address.trim(),
+                    area: businessData.area.trim(),
+                    city: businessData.city.trim(),
+                    googleMapsLink: businessData.googleMapsLink.trim() || null,
+                    whatsappNumberRequested: businessData.whatsappNumberRequested.trim() || null,
+                    hours,
+                    services,
+                }),
             });
 
-            // Update user document
-            await updateDoc(doc(db, 'users', user.uid), {
-                businessId,
-                onboardingComplete: true,
-                updatedAt: now,
-            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw new Error(data?.error || 'Failed to save your business. Please try again.');
+            }
+
+            // The backend already flipped onboardingComplete/businessId on
+            // the user record — refresh the local auth state to match, or
+            // ProtectedRoute would still see the stale onboardingComplete:
+            // false and bounce straight back to /onboarding.
+            await refreshUser();
 
             router.push('/dashboard');
         } catch (err) {
             console.error('[Onboarding] Save error:', err);
-            setError('Failed to save your business. Please try again.');
+            setError(err instanceof Error ? err.message : 'Failed to save your business. Please try again.');
             setIsLoading(false);
         }
     };

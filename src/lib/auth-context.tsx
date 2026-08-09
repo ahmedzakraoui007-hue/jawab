@@ -1,30 +1,16 @@
 'use client';
 
 import { createContext, useContext, useCallback, useEffect, useState, ReactNode } from 'react';
-import {
-    User,
-    signInWithEmailAndPassword,
-    createUserWithEmailAndPassword,
-    signOut as firebaseSignOut,
-    onAuthStateChanged,
-    GoogleAuthProvider,
-    signInWithPopup,
-    signInWithRedirect,
-    getRedirectResult,
-    RecaptchaVerifier,
-    signInWithPhoneNumber,
-    ConfirmationResult,
-    updateProfile,
-    sendPasswordResetEmail,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, isFirebaseConfigured } from '@/lib/firebase';
+import { backendFetch, refreshAccessToken } from '@/lib/backend-fetch';
+import { setAccessToken } from '@/lib/session';
 
-// Types
-export interface AuthUser extends User {
-    businessId?: string;
+export interface AuthUser {
+    uid: string;
+    email: string;
+    displayName: string;
+    businessId?: string | null;
     role?: 'owner' | 'admin' | 'staff';
-    onboardingComplete?: boolean;
+    onboardingComplete: boolean;
 }
 
 interface AuthContextType {
@@ -37,10 +23,11 @@ interface AuthContextType {
     signInWithEmail: (email: string, password: string) => Promise<void>;
     signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
 
-    // Google
+    // Google — not available yet, see the Phase A/D split in
+    // C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md
     signInWithGoogle: () => Promise<void>;
 
-    // Phone
+    // Phone — not available yet, same reason as Google above.
     sendPhoneOTP: (phoneNumber: string) => Promise<void>;
     verifyPhoneOTP: (code: string) => Promise<void>;
 
@@ -48,277 +35,180 @@ interface AuthContextType {
     signOut: () => Promise<void>;
     resetPassword: (email: string) => Promise<void>;
     clearError: () => void;
+
+    /** Re-fetches /auth/me and updates the in-memory user — call this
+     * after anything that changes user state server-side without going
+     * through signIn/signUp (e.g. onboarding's business-creation call
+     * flips onboardingComplete). */
+    refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Recaptcha container ID
-const RECAPTCHA_CONTAINER_ID = 'recaptcha-container';
+/** Shape returned by the backend's /auth/* endpoints — `id` becomes `uid`
+ * here so every existing consumer (`user.uid`, e.g. in the onboarding
+ * page) keeps working unchanged. */
+interface BackendUser {
+    id: string;
+    email: string;
+    displayName: string;
+    role: 'owner' | 'admin' | 'staff';
+    businessId: string | null;
+    onboardingComplete: boolean;
+}
+
+function toAuthUser(backendUser: BackendUser): AuthUser {
+    return {
+        uid: backendUser.id,
+        email: backendUser.email,
+        displayName: backendUser.displayName,
+        businessId: backendUser.businessId,
+        role: backendUser.role,
+        onboardingComplete: backendUser.onboardingComplete,
+    };
+}
+
+async function extractErrorMessage(res: Response): Promise<string> {
+    try {
+        const data = await res.json();
+        const fieldErrors = data?.details?.fieldErrors as Record<string, string[]> | undefined;
+        if (fieldErrors) {
+            const firstMessage = Object.values(fieldErrors).flat()[0];
+            if (firstMessage) return firstMessage;
+        }
+        return data?.error || 'Something went wrong. Please try again.';
+    } catch {
+        return 'Something went wrong. Please try again.';
+    }
+}
+
+const NOT_YET_AVAILABLE = 'This sign-in method is not available yet. Please use email and password.';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-    const [recaptchaVerifier, setRecaptchaVerifier] = useState<RecaptchaVerifier | null>(null);
 
-    // Listen to auth state changes
+    // Equivalent to Firebase's onAuthStateChanged: on first load, try to
+    // silently restore a session from the httpOnly refresh cookie (if any)
+    // before rendering anything gated by auth state.
     useEffect(() => {
-        // If Firebase is not configured, stop loading
-        if (!auth) {
-            setLoading(false);
-            return;
-        }
+        let cancelled = false;
 
-        // Handle redirect result (for mobile Google sign-in)
-        getRedirectResult(auth).then(async (result) => {
-            if (result?.user) {
-                await createUserDocument(result.user);
-            }
-        }).catch((err) => {
-            console.error('Redirect sign-in error:', err);
-            setError(getAuthErrorMessage(err));
-        });
+        (async () => {
+            const token = await refreshAccessToken();
+            if (cancelled) return;
 
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                // Get additional user data from Firestore
-                try {
-                    if (db) {
-                        const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-                        const userData = userDoc.data();
-
-                        setUser({
-                            ...firebaseUser,
-                            businessId: userData?.businessId,
-                            role: userData?.role || 'owner',
-                            onboardingComplete: userData?.onboardingComplete || false,
-                        } as AuthUser);
-                    } else {
-                        setUser(firebaseUser as AuthUser);
-                    }
-                } catch (err) {
-                    // Firestore might not be configured yet, just use Firebase user
-                    setUser(firebaseUser as AuthUser);
-                }
-            } else {
+            if (!token) {
                 setUser(null);
+                setLoading(false);
+                return;
             }
-            setLoading(false);
-        });
 
-        return () => unsubscribe();
+            try {
+                const res = await backendFetch('/auth/me');
+                if (!cancelled && res.ok) {
+                    const data = await res.json();
+                    setUser(toAuthUser(data.user));
+                }
+            } catch (err) {
+                console.error('[Auth] Session restore error:', err);
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    // Initialize recaptcha verifier for phone auth
-    const initRecaptcha = () => {
-        if (!auth) return null;
-
-        if (!recaptchaVerifier && typeof window !== 'undefined') {
-            const verifier = new RecaptchaVerifier(auth, RECAPTCHA_CONTAINER_ID, {
-                size: 'invisible',
-                callback: () => {
-                    // reCAPTCHA solved
-                },
-                'expired-callback': () => {
-                    setError('reCAPTCHA expired. Please try again.');
-                },
-            });
-            setRecaptchaVerifier(verifier);
-            return verifier;
-        }
-        return recaptchaVerifier;
-    };
-
-    // Create user document in Firestore
-    const createUserDocument = async (user: User, additionalData?: Record<string, unknown>) => {
-        if (!db) return;
-
-        try {
-            const userRef = doc(db, 'users', user.uid);
-            const userSnap = await getDoc(userRef);
-
-            if (!userSnap.exists()) {
-                await setDoc(userRef, {
-                    uid: user.uid,
-                    email: user.email,
-                    displayName: user.displayName,
-                    phoneNumber: user.phoneNumber,
-                    photoURL: user.photoURL,
-                    role: 'owner',
-                    onboardingComplete: false,
-                    createdAt: serverTimestamp(),
-                    updatedAt: serverTimestamp(),
-                    ...additionalData,
-                });
-            }
-        } catch (err) {
-            console.error('Error creating user document:', err);
-            // Don't throw - Firestore might not be configured yet
-        }
-    };
-
-    // Check if auth is available
-    const requireAuth = () => {
-        if (!auth) {
-            throw new Error('Firebase is not configured. Please add your Firebase credentials to .env.local');
-        }
-    };
-
-    // Sign in with email/password
     const signInWithEmail = async (email: string, password: string) => {
-        requireAuth();
         setLoading(true);
         setError(null);
         try {
-            await signInWithEmailAndPassword(auth!, email, password);
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            throw new Error(errorMessage);
+            const res = await backendFetch('/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+            });
+            if (!res.ok) {
+                const message = await extractErrorMessage(res);
+                setError(message);
+                throw new Error(message);
+            }
+            const data = await res.json();
+            setAccessToken(data.accessToken);
+            setUser(toAuthUser(data.user));
         } finally {
             setLoading(false);
         }
     };
 
-    // Sign up with email/password
     const signUpWithEmail = async (email: string, password: string, displayName: string) => {
-        requireAuth();
         setLoading(true);
         setError(null);
         try {
-            const { user: newUser } = await createUserWithEmailAndPassword(auth!, email, password);
-
-            // Update display name
-            await updateProfile(newUser, { displayName });
-
-            // Create user document
-            await createUserDocument(newUser, { displayName });
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            throw new Error(errorMessage);
+            const res = await backendFetch('/auth/signup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password, displayName }),
+            });
+            if (!res.ok) {
+                const message = await extractErrorMessage(res);
+                setError(message);
+                throw new Error(message);
+            }
+            const data = await res.json();
+            setAccessToken(data.accessToken);
+            setUser(toAuthUser(data.user));
         } finally {
             setLoading(false);
         }
     };
 
-    // Sign in with Google
     const signInWithGoogle = async () => {
-        requireAuth();
-        setLoading(true);
-        setError(null);
-        try {
-            const provider = new GoogleAuthProvider();
-            provider.addScope('email');
-            provider.addScope('profile');
-
-            // Use redirect on mobile (popups are often blocked), popup on desktop
-            const isMobile = typeof window !== 'undefined' && (
-                /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-                window.innerWidth < 768
-            );
-
-            if (isMobile) {
-                await signInWithRedirect(auth!, provider);
-                // Page will redirect — result handled in useEffect
-            } else {
-                const result = await signInWithPopup(auth!, provider);
-                await createUserDocument(result.user);
-            }
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            throw new Error(errorMessage);
-        } finally {
-            setLoading(false);
-        }
+        setError(NOT_YET_AVAILABLE);
+        throw new Error(NOT_YET_AVAILABLE);
     };
 
-    // Send phone OTP
-    const sendPhoneOTP = async (phoneNumber: string) => {
-        requireAuth();
-        setLoading(true);
-        setError(null);
-        try {
-            const verifier = initRecaptcha();
-            if (!verifier) {
-                throw new Error('Failed to initialize phone verification');
-            }
-
-            const confirmation = await signInWithPhoneNumber(auth!, phoneNumber, verifier);
-            setConfirmationResult(confirmation);
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            // Reset recaptcha on error
-            if (recaptchaVerifier) {
-                recaptchaVerifier.clear();
-                setRecaptchaVerifier(null);
-            }
-            throw new Error(errorMessage);
-        } finally {
-            setLoading(false);
-        }
+    const sendPhoneOTP = async () => {
+        setError(NOT_YET_AVAILABLE);
+        throw new Error(NOT_YET_AVAILABLE);
     };
 
-    // Verify phone OTP
-    const verifyPhoneOTP = async (code: string) => {
-        setLoading(true);
-        setError(null);
-        try {
-            if (!confirmationResult) {
-                throw new Error('No verification in progress');
-            }
-
-            const result = await confirmationResult.confirm(code);
-            await createUserDocument(result.user);
-            setConfirmationResult(null);
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            throw new Error(errorMessage);
-        } finally {
-            setLoading(false);
-        }
+    const verifyPhoneOTP = async () => {
+        setError(NOT_YET_AVAILABLE);
+        throw new Error(NOT_YET_AVAILABLE);
     };
 
-    // Sign out
     const signOut = async () => {
-        if (!auth) {
-            setUser(null);
-            return;
-        }
-
         setLoading(true);
         try {
-            await firebaseSignOut(auth);
-            setUser(null);
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
+            await backendFetch('/auth/logout', { method: 'POST' });
+        } catch (err) {
+            console.error('[Auth] Sign out error:', err);
         } finally {
+            setAccessToken(null);
+            setUser(null);
             setLoading(false);
         }
     };
 
-    // Reset password
-    const resetPassword = async (email: string) => {
-        requireAuth();
-        setLoading(true);
-        setError(null);
-        try {
-            await sendPasswordResetEmail(auth!, email);
-        } catch (err: unknown) {
-            const errorMessage = getAuthErrorMessage(err);
-            setError(errorMessage);
-            throw new Error(errorMessage);
-        } finally {
-            setLoading(false);
-        }
+    const resetPassword = async () => {
+        const message = 'Password reset isn\'t available yet — please contact support.';
+        setError(message);
+        throw new Error(message);
     };
 
-    // Clear error
+    const refreshUser = useCallback(async () => {
+        const res = await backendFetch('/auth/me');
+        if (res.ok) {
+            const data = await res.json();
+            setUser(toAuthUser(data.user));
+        }
+    }, []);
+
     const clearError = useCallback(() => setError(null), []);
 
     return (
@@ -327,7 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 user,
                 loading,
                 error,
-                isConfigured: isFirebaseConfigured,
+                isConfigured: true,
                 signInWithEmail,
                 signUpWithEmail,
                 signInWithGoogle,
@@ -336,11 +226,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 signOut,
                 resetPassword,
                 clearError,
+                refreshUser,
             }}
         >
             {children}
-            {/* Hidden recaptcha container for phone auth */}
-            <div id={RECAPTCHA_CONTAINER_ID} />
         </AuthContext.Provider>
     );
 }
@@ -351,50 +240,4 @@ export function useAuth() {
         throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
-}
-
-// Helper to get user-friendly error messages
-function getAuthErrorMessage(error: unknown): string {
-    const err = error as { code?: string; message?: string };
-
-    switch (err.code) {
-        case 'auth/email-already-in-use':
-            return 'This email is already registered. Please sign in instead.';
-        case 'auth/invalid-email':
-            return 'Please enter a valid email address.';
-        case 'auth/operation-not-allowed':
-            return 'This sign-in method is not enabled.';
-        case 'auth/weak-password':
-            return 'Password should be at least 6 characters.';
-        case 'auth/user-disabled':
-            return 'This account has been disabled.';
-        case 'auth/user-not-found':
-            return 'No account found with this email.';
-        case 'auth/wrong-password':
-            return 'Incorrect password. Please try again.';
-        case 'auth/invalid-credential':
-            return 'Invalid email or password.';
-        case 'auth/too-many-requests':
-            return 'Too many attempts. Please try again later.';
-        case 'auth/popup-closed-by-user':
-            return 'Sign-in popup was closed. Please try again.';
-        case 'auth/invalid-verification-code':
-            return 'Invalid verification code. Please try again.';
-        case 'auth/invalid-phone-number':
-            return 'Please enter a valid phone number with country code.';
-        case 'auth/missing-phone-number':
-            return 'Please enter your phone number.';
-        case 'auth/quota-exceeded':
-            return 'SMS quota exceeded. Please try again later.';
-        case 'auth/invalid-api-key':
-        case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
-            return 'Sign-in is not configured yet. Please contact support.';
-        default:
-            // Firebase error messages come formatted as "Firebase: Error (auth/some-code)."
-            // Strip that wrapper so we never show raw SDK text to end users.
-            if (err.code) {
-                return 'Something went wrong. Please try again.';
-            }
-            return err.message || 'An error occurred. Please try again.';
-    }
 }

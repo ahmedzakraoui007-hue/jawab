@@ -1,20 +1,68 @@
 # Deploying Jawab
 
-Jawab is a Next.js app with no bundled backend services — every integration
-(auth/database, AI, messaging, calendar, voice) is a third-party account you
-provision yourself and wire in via environment variables. This doc walks
-through each one. See [.env.example](.env.example) for the full variable
-list; copy it to `.env.local` for local development.
+Jawab is two deployable pieces: this Next.js app (marketing site + dashboard
+UI + most API routes/webhooks, deployed to Vercel) and a standalone Express
+API in [server/](server/) (auth + business creation today, growing over
+time — see "Migrating off Firebase" below). Every third-party integration
+(AI, messaging, calendar, voice, billing) is an account you provision
+yourself and wire in via environment variables. This doc walks through
+each one. See [.env.example](.env.example) (this app) and
+[server/.env.example](server/.env.example) (the backend) for the full
+variable lists.
 
 Every integration below fails **closed** and independently: if you skip a
 section, the feature it powers is disabled (or falls back to a simpler
-default) rather than crashing the app. You can deploy with just Firebase +
-Gemini working and add channels incrementally.
+default) rather than crashing the app. You can deploy with just the new
+backend + Firebase + Gemini working and add channels incrementally.
 
-## 1. Firebase (required — auth, database, admin access)
+## 0. The standalone backend (server/) — required for auth
 
-Every API route needs this. Without it, all Firestore reads/writes and all
-webhooks fail closed.
+Handles signup/login/session refresh and business creation. See
+[server/.env.example](server/.env.example) for the full variable list.
+
+1. Provision a Postgres database — [Railway](https://railway.app) is the
+   recommended default (bundles Node hosting + managed Postgres in one
+   project with git-push deploys; any Postgres host works equally well,
+   e.g. Neon, Render, Supabase-as-just-Postgres). Copy the connection
+   string into `DATABASE_URL`.
+2. Generate two long random secrets for `JWT_ACCESS_SECRET` and
+   `JWT_REFRESH_SECRET` (must be different values —
+   `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`).
+   The server refuses to start without both set, rather than silently
+   issuing forgeable tokens.
+3. Set `FRONTEND_ORIGIN` to this Next.js app's URL (for CORS).
+4. `cd server && npm install && npx prisma migrate dev` to create the
+   schema, then `npm run build && npm start` (or `npm run dev` locally).
+5. In the Next.js app's own `.env.local`/Vercel env, set
+   `NEXT_PUBLIC_BACKEND_URL` to wherever you deployed this, and
+   `JWT_ACCESS_SECRET` to the **exact same value** as step 2 — the
+   Next.js app's `middleware.ts` verifies access tokens the backend signs,
+   so the two sides have to share that secret. (`JWT_REFRESH_SECRET` stays
+   backend-only; the Next.js app never verifies a refresh token itself.)
+
+### Migrating off Firebase — current state
+
+This is an in-progress migration away from Firebase, staged to stay
+reviewable rather than one big-bang rewrite. Full roadmap:
+`C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md` (Phases A–D). As of
+**Phase A**: auth and business creation run on the backend above; every
+other feature (webhooks, AI/booking, billing, dashboard data, admin,
+Meta/Calendar OAuth connect) still runs on Firebase, exactly as described
+in the rest of this doc.
+
+**Known consequence of being mid-migration**: a business created through
+the new Postgres-backed signup has no matching Firestore document, so
+every Firestore-backed feature correctly — and safely — refuses it (403
+"no business associated with this account") rather than crashing or
+corrupting data. Those features become available once Phase C ports them
+off Firestore. Don't be surprised that a freshly-signed-up account can log
+in and complete onboarding but can't yet use the rest of the dashboard —
+that's the expected state of an in-progress migration, not a bug.
+
+## 1. Firebase (still required for everything except auth/business creation)
+
+Every API route other than `/auth/*` and business creation needs this.
+Without it, all Firestore reads/writes and all webhooks fail closed.
 
 1. Create a project at [console.firebase.google.com](https://console.firebase.google.com).
 2. **Authentication** → Sign-in method → enable **Email/Password**.

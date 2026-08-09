@@ -1,0 +1,78 @@
+// Phase A schema — auth + business shell only. See
+// C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md for the full
+// migration roadmap (Phases B-D add Message/Booking/Usage/Subscription/
+// PlatformConfig and the remaining Business columns).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  owner
+  admin
+  staff
+}
+
+model User {
+  id                 String    @id @default(uuid())
+  email              String    @unique
+  passwordHash       String    @map("password_hash")
+  displayName        String    @map("display_name")
+  phone              String?
+  role               UserRole  @default(owner)
+  businessId         String?   @map("business_id")
+  business           Business? @relation("BusinessOwner", fields: [businessId], references: [id])
+  onboardingComplete Boolean   @default(false) @map("onboarding_complete")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  lastLoginAt        DateTime? @map("last_login_at")
+
+  refreshTokens  RefreshToken[]
+  ownedBusinesses Business[]     @relation("BusinessCreator")
+
+  @@map("users")
+}
+
+model Business {
+  id              String   @id @default(uuid())
+  ownerId         String   @map("owner_id")
+  owner           User     @relation("BusinessCreator", fields: [ownerId], references: [id])
+  name            String
+  industry        String?
+  description     String?
+  address         String?
+  area            String?
+  city            String?
+  country         String?
+  googleMapsLink  String?  @map("google_maps_link")
+  timezone        String   @default("Asia/Dubai")
+  tone            String   @default("friendly")
+  hours           Json     @default("{}")
+  services        Json     @default("[]")
+  customFaqs      Json     @default("[]") @map("custom_faqs")
+  staffIds        String[] @default([]) @map("staff_ids")
+  whatsappNumberRequested String? @map("whatsapp_number_requested")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  staffMembers User[] @relation("BusinessOwner")
+
+  @@map("businesses")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @map("token_hash")
+  createdAt DateTime  @default(now()) @map("created_at")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}

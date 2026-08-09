@@ -228,18 +228,17 @@ export default function IntegrationsPage() {
         fetchBusiness();
     }, [user?.businessId]);
 
+    // TODO(Phase C — see zippy-beaming-popcorn.md): these OAuth-initiation
+    // routes still verify a real Firebase ID token server-side
+    // (auth-guard.ts's verifyTokenAndBusinessMembership), which accounts
+    // created through the new backend's email/password signup don't have.
+    // Reconnect these once the integration routes move off Firebase Auth.
     const handleConnectMeta = async () => {
-        if (!business?.id || !user) return;
-        setLoading('meta');
-        const idToken = await user.getIdToken();
-        window.location.href = `/api/integrations/meta/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken)}`;
+        message.info('Connecting Meta isn\'t available yet on this account — check back soon.');
     };
 
     const handleConnectCalendar = async () => {
-        if (!business?.id || !user) return;
-        setLoading('calendar');
-        const idToken = await user.getIdToken();
-        window.location.href = `/api/integrations/calendar/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken)}`;
+        message.info('Connecting Google Calendar isn\'t available yet on this account — check back soon.');
     };
 
     return (

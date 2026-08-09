@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify } from 'jose';
 import { locales, defaultLocale, type Locale } from '@/i18n/config';
 
-// Google's public key endpoint for Firebase Auth tokens
-const JWKS = createRemoteJWKSet(
-    new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com')
-);
-
-const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'demo-project';
+// Same secret the standalone backend (server/) signs access tokens with —
+// see server/.env.example's JWT_ACCESS_SECRET. Using `jose` rather than
+// the `jsonwebtoken` package the backend itself uses: middleware runs on
+// the Edge runtime, which `jsonwebtoken` (built on Node's `crypto` module)
+// doesn't support, but `jose` does — same reason this file used `jose` to
+// verify Firebase's tokens before this migration.
+const ACCESS_TOKEN_SECRET = new TextEncoder().encode(process.env.JWT_ACCESS_SECRET || '');
 
 // Routes that don't require authentication (webhooks must stay public)
 const PUBLIC_API_ROUTES = [
@@ -42,18 +43,22 @@ const PUBLIC_API_ROUTES = [
 const NON_LOCALIZED_PREFIXES = ['/dashboard', '/onboarding', '/api'];
 
 /**
- * Verify a Firebase Auth ID token using jose (Edge Runtime compatible).
- * Returns the decoded payload on success, or null on failure.
+ * Verify our own access token (issued by server/'s /auth/login|signup|
+ * refresh) using jose (Edge Runtime compatible). Returns the decoded
+ * payload on success, or null on failure.
  */
-async function verifyFirebaseToken(token: string) {
-    try {
-        const { payload } = await jwtVerify(token, JWKS, {
-            issuer: `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`,
-            audience: FIREBASE_PROJECT_ID,
-        });
+async function verifyAccessToken(token: string) {
+    if (!process.env.JWT_ACCESS_SECRET) {
+        console.warn('[Middleware] JWT_ACCESS_SECRET not configured — rejecting all authenticated requests');
+        return null;
+    }
 
-        // Firebase tokens must have a non-empty `sub` (the user's UID)
-        if (!payload.sub) {
+    try {
+        const { payload } = await jwtVerify(token, ACCESS_TOKEN_SECRET);
+
+        // Must have a non-empty sub (the user's id) and email, matching
+        // what server/src/lib/jwt.ts signs into every access token.
+        if (!payload.sub || typeof payload.email !== 'string') {
             return null;
         }
 
@@ -82,8 +87,8 @@ async function handleApiAuth(request: NextRequest, pathname: string) {
 
     const token = authHeader.split('Bearer ')[1];
 
-    // Verify the Firebase ID token
-    const payload = await verifyFirebaseToken(token);
+    // Verify our own access token
+    const payload = await verifyAccessToken(token);
 
     if (!payload) {
         return NextResponse.json(
