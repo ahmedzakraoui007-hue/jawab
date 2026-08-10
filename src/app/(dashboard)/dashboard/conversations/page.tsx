@@ -1,27 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Spin, Empty, message } from 'antd';
 import { useAuth } from '@/lib/auth-context';
-import { authFetch } from '@/lib/auth-fetch';
-import { db } from '@/lib/firebase';
-import {
-    collection,
-    query,
-    orderBy,
-    onSnapshot,
-    doc,
-    updateDoc,
-    Timestamp,
-} from 'firebase/firestore';
+import { backendFetch } from '@/lib/backend-fetch';
 import { ConversationList, ChatWindow } from '@/components/dashboard';
 
-function detectLanguageFromMessages(messages: { role: string; content: string }[]): string {
-    if (!messages || messages.length === 0) return 'Unknown';
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-    if (!lastUserMsg) return 'Unknown';
-    if (/[\u0600-\u06FF]/.test(lastUserMsg.content)) return 'Arabic';
-    if (/[\u0900-\u097F]/.test(lastUserMsg.content)) return 'Hindi';
+function detectLanguageFromText(text: string | null): string {
+    if (!text) return 'Unknown';
+    if (/[؀-ۿ]/.test(text)) return 'Arabic';
+    if (/[ऀ-ॿ]/.test(text)) return 'Hindi';
     return 'English';
 }
 
@@ -33,87 +21,80 @@ export default function ConversationsPage() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
 
-    // Real-time listener for conversations list
-    useEffect(() => {
-        if (!user?.businessId || !db) {
+    // Polls the conversation list — replaces Firestore's onSnapshot
+    // real-time listener.
+    const fetchConversations = useCallback(async () => {
+        if (!user?.businessId) {
             setLoading(false);
             return;
         }
-
-        const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
-        const q = query(convsRef, orderBy('lastMessageAt', 'desc'));
-
-        const unsubscribe = onSnapshot(
-            q,
-            (snapshot) => {
-                const convs = snapshot.docs.map((d) => ({
-                    id: d.id,
-                    ...d.data(),
-                    timestamp:
-                        d.data().lastMessageAt?.toDate?.()?.toISOString() ||
-                        new Date().toISOString(),
-                    lastMessage:
-                        d.data().messages?.slice(-1)?.[0]?.content || 'No messages yet',
-                    unread: 0,
-                    language: detectLanguageFromMessages(d.data().messages || []),
-                }));
-                setConversations(convs);
-                setLoading(false);
-            },
-            (err) => {
-                console.error('Conversations listener error:', err);
-                setLoading(false);
+        try {
+            const res = await backendFetch('/conversations');
+            if (res.ok) {
+                const data = await res.json();
+                setConversations(
+                    (data.conversations || []).map((c: any) => ({
+                        ...c,
+                        timestamp: c.lastMessageAt || new Date().toISOString(),
+                        lastMessage: c.lastMessage || 'No messages yet',
+                        unread: 0,
+                        language: detectLanguageFromText(c.lastMessage),
+                    }))
+                );
             }
-        );
-
-        return () => unsubscribe();
+        } catch (err) {
+            console.error('Conversations fetch error:', err);
+        } finally {
+            setLoading(false);
+        }
     }, [user?.businessId]);
 
-    // When a conversation is selected, extract its messages
+    useEffect(() => {
+        fetchConversations();
+        const interval = setInterval(fetchConversations, 10000);
+        return () => clearInterval(interval);
+    }, [fetchConversations]);
+
+    // Fetch the full message thread whenever a conversation is selected.
     useEffect(() => {
         if (!selectedId) {
             setSelectedMessages([]);
             return;
         }
-        const conv = conversations.find((c) => c.id === selectedId);
-        if (conv?.messages) {
-            setSelectedMessages(
-                conv.messages.map((m: any, i: number) => ({
-                    id: String(i),
-                    role: m.role === 'model' ? 'assistant' : m.role,
-                    content: m.content,
-                    timestamp:
-                        m.timestamp?.toDate?.()?.toISOString() ||
-                        new Date().toISOString(),
-                }))
-            );
-        } else {
-            setSelectedMessages([]);
-        }
-    }, [selectedId, conversations]);
 
-    // Send a human reply (take over)
+        let cancelled = false;
+        backendFetch(`/conversations/${selectedId}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (cancelled || !data) return;
+                setSelectedMessages(
+                    (data.conversation?.messages || []).map((m: any) => ({
+                        id: m.id,
+                        role: m.role === 'model' ? 'assistant' : m.role,
+                        content: m.content,
+                        timestamp: m.timestamp,
+                    }))
+                );
+            })
+            .catch((err) => console.error('Conversation detail fetch error:', err));
+
+        return () => {
+            cancelled = true;
+        };
+    }, [selectedId]);
+
+    // Send a human reply (take over) — the backend resolves the recipient
+    // phone number from the conversation record itself and marks it
+    // handled_by: human.
     const handleSendMessage = async (text: string) => {
-        if (!text.trim() || !selectedId || !user?.businessId || !db) return;
+        if (!text.trim() || !selectedId) return;
         setSending(true);
 
         try {
-            const conv = conversations.find((c) => c.id === selectedId);
-            if (!conv?.customerPhone) {
-                message.error('No phone number for this conversation');
-                return;
-            }
-
-            // Send via Twilio API
-            const res = await authFetch('/api/whatsapp/send', {
+            const res = await backendFetch('/send/whatsapp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    to: conv.customerPhone,
-                    message: text,
-                    businessId: user.businessId,
-                    conversationId: selectedId,
-                }),
+                body: JSON.stringify({ conversationId: selectedId, message: text }),
             });
 
             if (!res.ok) {
@@ -121,24 +102,8 @@ export default function ConversationsPage() {
                 throw new Error(errData.error || 'Failed to send');
             }
 
-            // Update conversation in Firestore (mark as human-handled)
-            const convRef = doc(
-                db,
-                'businesses',
-                user.businessId,
-                'conversations',
-                selectedId
-            );
-            const existingMessages = conv.messages || [];
-            await updateDoc(convRef, {
-                messages: [
-                    ...existingMessages,
-                    { role: 'model', content: text, timestamp: Timestamp.now() },
-                ],
-                handledBy: 'human',
-                lastMessageAt: Timestamp.now(),
-            });
-
+            setSelectedMessages((prev) => [...prev, { id: String(Date.now()), role: 'assistant', content: text, timestamp: new Date().toISOString() }]);
+            fetchConversations();
             message.success('Message sent');
         } catch (err: any) {
             console.error('Send error:', err);
@@ -148,8 +113,7 @@ export default function ConversationsPage() {
         }
     };
 
-    const selectedConversation =
-        conversations.find((c) => c.id === selectedId) || null;
+    const selectedConversation = conversations.find((c) => c.id === selectedId) || null;
 
     if (loading) {
         return (
@@ -162,9 +126,7 @@ export default function ConversationsPage() {
     if (conversations.length === 0) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 'calc(100vh - 160px)' }}>
-                <Empty
-                    description="No conversations yet. Send a WhatsApp message to your Twilio number to get started!"
-                />
+                <Empty description="No conversations yet. Send a WhatsApp message to your Twilio number to get started!" />
             </div>
         );
     }

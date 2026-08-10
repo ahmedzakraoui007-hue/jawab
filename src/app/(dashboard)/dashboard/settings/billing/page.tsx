@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { authFetch } from '@/lib/auth-fetch';
+import { backendFetch } from '@/lib/backend-fetch';
 import {
     CURRENCIES,
     PLAN_TIERS,
@@ -70,7 +70,7 @@ export default function BillingPage() {
 
     const fetchStatus = useCallback(async () => {
         try {
-            const res = await authFetch('/api/billing/status');
+            const res = await backendFetch('/billing/status');
             if (res.ok) {
                 setStatus(await res.json());
             }
@@ -106,7 +106,7 @@ export default function BillingPage() {
         }
         setActionLoading(plan);
         try {
-            const res = await authFetch('/api/billing/checkout', {
+            const res = await backendFetch('/billing/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ plan, currency, interval }),
@@ -128,7 +128,7 @@ export default function BillingPage() {
     const handleManageBilling = async () => {
         setActionLoading('portal');
         try {
-            const res = await authFetch('/api/billing/portal', { method: 'POST' });
+            const res = await backendFetch('/billing/portal', { method: 'POST' });
             const data = await res.json();
             if (res.ok && data.url) {
                 window.location.href = data.url;

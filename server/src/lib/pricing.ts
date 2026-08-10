@@ -1,5 +1,7 @@
+export type CurrencyCode = 'AED' | 'SAR' | 'QAR' | 'KWD' | 'BHD' | 'OMR';
+
 export interface CurrencyInfo {
-    code: string;
+    code: CurrencyCode;
     country: string;
 }
 
@@ -11,8 +13,6 @@ export const CURRENCIES: CurrencyInfo[] = [
     { code: 'BHD', country: 'Bahrain' },
     { code: 'OMR', country: 'Oman' },
 ];
-
-export type CurrencyCode = (typeof CURRENCIES)[number]['code'];
 export const DEFAULT_CURRENCY: CurrencyCode = 'AED';
 
 export const PLAN_TIERS = ['starter', 'professional', 'business'] as const;

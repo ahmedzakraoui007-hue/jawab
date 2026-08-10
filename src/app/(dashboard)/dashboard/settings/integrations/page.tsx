@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { backendFetch, BACKEND_URL } from '@/lib/backend-fetch';
+import { getAccessToken } from '@/lib/session';
 import {
     Card,
     Button,
@@ -212,14 +212,15 @@ export default function IntegrationsPage() {
         }
     }, []);
 
-    // Fetch the real business document so connection state reflects reality
+    // Fetch the real business record so connection state reflects reality
     useEffect(() => {
         async function fetchBusiness() {
-            if (!user?.businessId || !db) return;
+            if (!user?.businessId) return;
             try {
-                const snap = await getDoc(doc(db, 'businesses', user.businessId));
-                if (snap.exists()) {
-                    setBusiness({ id: snap.id, ...snap.data() });
+                const res = await backendFetch('/businesses/me');
+                if (res.ok) {
+                    const data = await res.json();
+                    setBusiness(data.business);
                 }
             } catch (err) {
                 console.error('[Integrations] Failed to fetch business:', err);
@@ -228,17 +229,18 @@ export default function IntegrationsPage() {
         fetchBusiness();
     }, [user?.businessId]);
 
-    // TODO(Phase C — see zippy-beaming-popcorn.md): these OAuth-initiation
-    // routes still verify a real Firebase ID token server-side
-    // (auth-guard.ts's verifyTokenAndBusinessMembership), which accounts
-    // created through the new backend's email/password signup don't have.
-    // Reconnect these once the integration routes move off Firebase Auth.
-    const handleConnectMeta = async () => {
-        message.info('Connecting Meta isn\'t available yet on this account — check back soon.');
+    const handleConnectMeta = () => {
+        if (!business?.id) return;
+        setLoading('meta');
+        const idToken = getAccessToken();
+        window.location.href = `${BACKEND_URL}/integrations/meta/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken || '')}`;
     };
 
-    const handleConnectCalendar = async () => {
-        message.info('Connecting Google Calendar isn\'t available yet on this account — check back soon.');
+    const handleConnectCalendar = () => {
+        if (!business?.id) return;
+        setLoading('calendar');
+        const idToken = getAccessToken();
+        window.location.href = `${BACKEND_URL}/integrations/calendar/auth?businessId=${business.id}&idToken=${encodeURIComponent(idToken || '')}`;
     };
 
     return (
@@ -257,8 +259,8 @@ export default function IntegrationsPage() {
                 icon={<FacebookOutlined />}
                 name="Facebook & Instagram"
                 description="Respond to Messenger DMs and Instagram messages automatically"
-                connected={!!business?.meta}
-                details={business?.meta ? `${business.meta.pageName}${business.meta.instagramUsername ? ` • @${business.meta.instagramUsername}` : ''}` : undefined}
+                connected={!!business?.metaPageId}
+                details={business?.metaPageId ? `${business.metaPageName}${business.metaInstagramUsername ? ` • @${business.metaInstagramUsername}` : ''}` : undefined}
                 onConnect={handleConnectMeta}
                 loading={loading === 'meta'}
                 color="#1877F2"
@@ -273,8 +275,8 @@ export default function IntegrationsPage() {
                 icon={<CalendarOutlined />}
                 name="Google Calendar"
                 description="Sync bookings to your Google Calendar automatically"
-                connected={!!business?.googleCalendar}
-                details={business?.googleCalendar?.email}
+                connected={!!business?.calendarConnected}
+                details={business?.calendarEmail}
                 onConnect={handleConnectCalendar}
                 loading={loading === 'calendar'}
                 color="#ea4335"

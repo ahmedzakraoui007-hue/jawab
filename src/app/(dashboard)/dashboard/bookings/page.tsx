@@ -5,7 +5,7 @@ import { Card, Button, Typography, Space, Row, Col, Statistic, Segmented, Spin, 
 import { PlusOutlined, RobotOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useAuth } from '@/lib/auth-context';
-import { authFetch } from '@/lib/auth-fetch';
+import { backendFetch } from '@/lib/backend-fetch';
 import { BookingsTable, BookingsCalendar } from '@/components/dashboard';
 
 const { Title, Text } = Typography;
@@ -26,7 +26,6 @@ interface BookingItem {
 }
 
 interface ServiceOption {
-    id: string;
     name: string;
     price: number;
     duration: number;
@@ -57,7 +56,7 @@ export default function BookingsPage() {
             return;
         }
         try {
-            const res = await authFetch(`/api/calendar/book?businessId=${user.businessId}`);
+            const res = await backendFetch('/calendar/book');
             if (!res.ok) throw new Error('Failed to fetch bookings');
             const data = await res.json();
             const items: BookingItem[] = (data.bookings || []).map((b: any) => {
@@ -70,9 +69,9 @@ export default function BookingsPage() {
                     price: b.price ?? 0,
                     date,
                     time,
-                    duration: b.duration ?? 60,
+                    duration: b.serviceDuration ?? 60,
                     status: b.status,
-                    source: b.source ?? 'dashboard',
+                    source: b.createdVia ?? 'dashboard',
                 };
             });
             setBookings(items);
@@ -91,13 +90,11 @@ export default function BookingsPage() {
         async function fetchServices() {
             if (!user?.businessId) return;
             try {
-                const res = await authFetch(`/api/business/services?businessId=${user.businessId}`);
+                const res = await backendFetch('/businesses/me');
                 if (!res.ok) return;
                 const data = await res.json();
                 setServices(
-                    (data.services || [])
-                        .filter((s: any) => s.active !== false)
-                        .map((s: any) => ({ id: s.id, name: s.name, price: s.price, duration: s.duration }))
+                    (data.business?.services || []).map((s: any) => ({ name: s.name, price: s.price, duration: s.duration }))
                 );
             } catch (err) {
                 console.error('[Bookings] services fetch error:', err);
@@ -117,11 +114,10 @@ export default function BookingsPage() {
         if (!user?.businessId) return;
         setCreating(true);
         try {
-            const res = await authFetch('/api/calendar/book', {
+            const res = await backendFetch('/calendar/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    businessId: user.businessId,
                     customerName: values.customerName,
                     customerPhone: values.customerPhone,
                     customerEmail: values.customerEmail || undefined,
@@ -130,7 +126,6 @@ export default function BookingsPage() {
                     price: values.price,
                     startTime: values.startTime.toISOString(),
                     notes: values.notes || undefined,
-                    createdVia: 'dashboard',
                 }),
             });
 

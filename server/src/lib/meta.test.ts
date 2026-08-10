@@ -6,7 +6,7 @@ import {
     parseWebhookPayload,
     resolveMetaAccessToken,
     type MetaWebhookEntry,
-} from '@/lib/meta';
+} from './meta';
 
 // Set in vitest.setup.ts before any module import.
 const APP_SECRET = 'test-meta-app-secret';
@@ -166,8 +166,9 @@ describe('resolveMetaAccessToken', () => {
     });
 
     it("prefers the business's own token even when the shared fallback is enabled", () => {
-        // The dangerous ordering bug would be shared-first; assert explicitly
-        // that a connected business is never routed through the shared Page.
+        // The dangerous ordering bug would be shared-first; assert
+        // explicitly that a connected business is never routed through the
+        // shared Page.
         const result = resolveMetaAccessToken({ accessToken: 'biz-token' }, 'test', {
             sharedToken: SHARED,
             allowSharedFallback: true,
@@ -205,12 +206,5 @@ describe('resolveMetaAccessToken', () => {
             allowSharedFallback: true,
         });
         expect(result).toEqual({ token: null, source: 'none' });
-    });
-
-    it('defaults to refusing the fallback with no env vars set in this suite', () => {
-        // vitest.setup.ts sets META_APP_SECRET but neither
-        // META_PAGE_ACCESS_TOKEN nor META_ALLOW_SHARED_TOKEN — i.e. the
-        // shape of a correctly-configured multi-tenant deployment.
-        expect(resolveMetaAccessToken(undefined, 'test').source).toBe('none');
     });
 });

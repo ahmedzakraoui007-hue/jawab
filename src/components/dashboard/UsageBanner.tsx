@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button } from 'antd';
-import { authFetch } from '@/lib/auth-fetch';
+import { backendFetch } from '@/lib/backend-fetch';
 
 interface BillingStatus {
     plan: string;
@@ -26,7 +26,7 @@ export function UsageBanner() {
 
     useEffect(() => {
         let cancelled = false;
-        authFetch('/api/billing/status')
+        backendFetch('/billing/status')
             .then((res) => (res.ok ? res.json() : null))
             .then((data) => {
                 if (!cancelled && data) setStatus(data);

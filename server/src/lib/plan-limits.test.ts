@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolvePlanLimit, isValidStoredLimit, sanitizeOverrides } from '@/lib/plan-limits';
-import { PLAN_CONVERSATION_LIMITS } from '@/lib/pricing';
+import { resolvePlanLimit, isValidStoredLimit, sanitizeOverrides } from './plan-limits';
+import { PLAN_CONVERSATION_LIMITS } from './pricing';
 
 describe('isValidStoredLimit', () => {
     it('accepts null (meaning unlimited)', () => {
@@ -16,7 +16,7 @@ describe('isValidStoredLimit', () => {
         expect(isValidStoredLimit(-1)).toBe(false);
     });
 
-    it('rejects NaN and Infinity — Infinity has no JSON/Firestore representation', () => {
+    it('rejects NaN and Infinity — Infinity has no JSON/Postgres representation', () => {
         expect(isValidStoredLimit(NaN)).toBe(false);
         expect(isValidStoredLimit(Infinity)).toBe(false);
     });
@@ -50,7 +50,6 @@ describe('resolvePlanLimit', () => {
     });
 
     it('ignores an invalid business override and falls through to the next layer', () => {
-        // e.g. corrupted data, or a stray string from a form that skipped validation
         const result = resolvePlanLimit('starter', { starter: 750 }, 'not-a-number');
         expect(result).toEqual({ limit: 750, source: 'platform' });
     });

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { prisma } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { asyncHandler } from '../middleware/error-handler';
@@ -111,11 +112,19 @@ businessesRouter.patch('/me', requireAuth, asyncHandler(async (req, res) => {
     res.json({ business });
 }));
 
+// Whole-list replace, not per-item CRUD — the caller (dashboard) mutates
+// its local copy of the list and PUTs the full array back. `id` is
+// generated server-side for any item that doesn't already have one, so
+// the client never has to invent identifiers itself.
 const servicesSchema = z.array(z.object({
+    id: z.string().optional(),
     name: z.string().trim().min(1),
     nameAr: z.string().trim().optional(),
+    description: z.string().trim().optional(),
     price: z.number().nonnegative(),
     duration: z.number().positive(),
+    category: z.string().trim().optional(),
+    active: z.boolean().default(true),
 }));
 
 businessesRouter.put('/me/services', requireAuth, asyncHandler(async (req, res) => {
@@ -125,14 +134,20 @@ businessesRouter.put('/me/services', requireAuth, asyncHandler(async (req, res) 
         return;
     }
 
-    const services = servicesSchema.parse(req.body.services);
+    const parsed = servicesSchema.parse(req.body.services);
+    const services = parsed.map((s) => ({ ...s, id: s.id || randomUUID() }));
     const business = await prisma.business.update({ where: { id: businessId }, data: { services } });
     res.json({ services: business.services });
 }));
 
 const faqsSchema = z.array(z.object({
+    id: z.string().optional(),
     question: z.string().trim().min(1),
+    questionAr: z.string().trim().optional(),
     answer: z.string().trim().min(1),
+    answerAr: z.string().trim().optional(),
+    category: z.string().trim().optional(),
+    active: z.boolean().default(true),
 }));
 
 businessesRouter.put('/me/faqs', requireAuth, asyncHandler(async (req, res) => {
@@ -142,7 +157,8 @@ businessesRouter.put('/me/faqs', requireAuth, asyncHandler(async (req, res) => {
         return;
     }
 
-    const customFaqs = faqsSchema.parse(req.body.faqs);
+    const parsed = faqsSchema.parse(req.body.faqs);
+    const customFaqs = parsed.map((f) => ({ ...f, id: f.id || randomUUID() }));
     const business = await prisma.business.update({ where: { id: businessId }, data: { customFaqs } });
     res.json({ faqs: business.customFaqs });
 }));

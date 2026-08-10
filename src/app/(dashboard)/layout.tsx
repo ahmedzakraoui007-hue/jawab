@@ -6,9 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { UsageBanner } from '@/components/dashboard/UsageBanner';
-import { authFetch } from '@/lib/auth-fetch';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { backendFetch } from '@/lib/backend-fetch';
 import {
     Layout,
     Menu,
@@ -54,14 +52,15 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
     const [unreadCount, setUnreadCount] = useState(0);
     const [planLabel, setPlanLabel] = useState<string>('');
 
-    // Fetch business name from Firestore
+    // Fetch business name
     useEffect(() => {
         async function fetchBusiness() {
-            if (!user?.businessId || !db) return;
+            if (!user?.businessId) return;
             try {
-                const bizDoc = await getDoc(doc(db, 'businesses', user.businessId));
-                if (bizDoc.exists()) {
-                    const name = bizDoc.data().name || 'My Business';
+                const res = await backendFetch('/businesses/me');
+                if (res.ok) {
+                    const data = await res.json();
+                    const name = data.business?.name || 'My Business';
                     setBusinessName(name);
                     setBusinessInitials(
                         name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2)
@@ -74,20 +73,27 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         fetchBusiness();
     }, [user?.businessId]);
 
-    // Fetch unread conversation count
+    // Poll the active conversation count — replaces Firestore's onSnapshot
+    // real-time listener (Postgres has no built-in equivalent; see
+    // DEPLOYMENT.md's "Migrating off Firebase" note on this tradeoff).
     useEffect(() => {
+        if (!user?.businessId) return;
+
         async function fetchUnread() {
-            if (!user?.businessId || !db) return;
             try {
-                const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
-                const q = query(convsRef, where('status', '==', 'active'));
-                const snap = await getDocs(q);
-                setUnreadCount(snap.size);
+                const res = await backendFetch('/conversations?status=active');
+                if (res.ok) {
+                    const data = await res.json();
+                    setUnreadCount(data.conversations?.length || 0);
+                }
             } catch (err) {
                 console.error('Error fetching unread count:', err);
             }
         }
+
         fetchUnread();
+        const interval = setInterval(fetchUnread, 15000);
+        return () => clearInterval(interval);
     }, [user?.businessId]);
 
     // Fetch plan label for the sidebar footer
@@ -95,7 +101,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         async function fetchPlan() {
             if (!user?.businessId) return;
             try {
-                const res = await authFetch('/api/billing/status');
+                const res = await backendFetch('/billing/status');
                 if (res.ok) {
                     const data = await res.json();
                     const name = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);

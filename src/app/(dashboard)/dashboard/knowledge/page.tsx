@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { authFetch } from '@/lib/auth-fetch';
+import { backendFetch } from '@/lib/backend-fetch';
 import {
     Card,
     Table,
@@ -80,18 +80,11 @@ export default function KnowledgeBasePage() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            const [servicesRes, faqsRes] = await Promise.all([
-                authFetch(`/api/business/services?businessId=${businessId}`),
-                authFetch(`/api/business/faqs?businessId=${businessId}`)
-            ]);
-
-            if (servicesRes.ok) {
-                const data = await servicesRes.json();
-                setServices(data.services || []);
-            }
-            if (faqsRes.ok) {
-                const data = await faqsRes.json();
-                setFaqs(data.faqs || []);
+            const res = await backendFetch('/businesses/me');
+            if (res.ok) {
+                const data = await res.json();
+                setServices(data.business?.services || []);
+                setFaqs(data.business?.customFaqs || []);
             }
         } catch (error) {
             console.error('Error fetching data:', error);
@@ -100,33 +93,52 @@ export default function KnowledgeBasePage() {
         }
     };
 
+    // Whole-list replace: the backend has no per-item CRUD for
+    // services/FAQs (they're stored as a JSON array on the business row),
+    // so add/edit/delete all mutate the local list and PUT the full array.
+    const putServices = async (next: Service[]) => {
+        const res = await backendFetch('/businesses/me/services', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ services: next }),
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.error || 'Failed to save services');
+        }
+        const data = await res.json();
+        setServices(data.services || next);
+    };
+
+    const putFaqs = async (next: FAQ[]) => {
+        const res = await backendFetch('/businesses/me/faqs', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ faqs: next }),
+        });
+        if (!res.ok) {
+            const error = await res.json().catch(() => ({}));
+            throw new Error(error.error || 'Failed to save FAQs');
+        }
+        const data = await res.json();
+        setFaqs(data.faqs || next);
+    };
+
     // Service handlers
     const handleSaveService = async (values: Partial<Service>) => {
         setModalLoading(true);
         try {
-            const method = editingService ? 'PUT' : 'POST';
-            const body = editingService
-                ? { businessId, serviceId: editingService.id, updates: values }
-                : { businessId, ...values };
+            const next = editingService
+                ? services.map((s) => (s.id === editingService.id ? { ...s, ...values } : s))
+                : [...services, { ...values, active: true } as Service];
 
-            const res = await authFetch('/api/business/services', {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (res.ok) {
-                message.success(`Service ${editingService ? 'updated' : 'added'} successfully!`);
-                fetchData();
-                setServiceModalOpen(false);
-                setEditingService(null);
-                serviceForm.resetFields();
-            } else {
-                const error = await res.json();
-                message.error(error.error || 'Failed to save service');
-            }
-        } catch {
-            message.error('Failed to save service');
+            await putServices(next);
+            message.success(`Service ${editingService ? 'updated' : 'added'} successfully!`);
+            setServiceModalOpen(false);
+            setEditingService(null);
+            serviceForm.resetFields();
+        } catch (err: any) {
+            message.error(err.message || 'Failed to save service');
         } finally {
             setModalLoading(false);
         }
@@ -134,16 +146,8 @@ export default function KnowledgeBasePage() {
 
     const handleDeleteService = async (service: Service) => {
         try {
-            const res = await authFetch('/api/business/services', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ businessId, serviceId: service.id }),
-            });
-
-            if (res.ok) {
-                message.success('Service deleted');
-                fetchData();
-            }
+            await putServices(services.filter((s) => s.id !== service.id));
+            message.success('Service deleted');
         } catch {
             message.error('Failed to delete service');
         }
@@ -153,29 +157,17 @@ export default function KnowledgeBasePage() {
     const handleSaveFaq = async (values: Partial<FAQ>) => {
         setModalLoading(true);
         try {
-            const method = editingFaq ? 'PUT' : 'POST';
-            const body = editingFaq
-                ? { businessId, faqId: editingFaq.id, updates: values }
-                : { businessId, ...values };
+            const next = editingFaq
+                ? faqs.map((f) => (f.id === editingFaq.id ? { ...f, ...values } : f))
+                : [...faqs, { ...values, active: true } as FAQ];
 
-            const res = await authFetch('/api/business/faqs', {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body),
-            });
-
-            if (res.ok) {
-                message.success(`FAQ ${editingFaq ? 'updated' : 'added'} successfully!`);
-                fetchData();
-                setFaqModalOpen(false);
-                setEditingFaq(null);
-                faqForm.resetFields();
-            } else {
-                const error = await res.json();
-                message.error(error.error || 'Failed to save FAQ');
-            }
-        } catch {
-            message.error('Failed to save FAQ');
+            await putFaqs(next);
+            message.success(`FAQ ${editingFaq ? 'updated' : 'added'} successfully!`);
+            setFaqModalOpen(false);
+            setEditingFaq(null);
+            faqForm.resetFields();
+        } catch (err: any) {
+            message.error(err.message || 'Failed to save FAQ');
         } finally {
             setModalLoading(false);
         }
@@ -183,16 +175,8 @@ export default function KnowledgeBasePage() {
 
     const handleDeleteFaq = async (faq: FAQ) => {
         try {
-            const res = await authFetch('/api/business/faqs', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ businessId, faqId: faq.id }),
-            });
-
-            if (res.ok) {
-                message.success('FAQ deleted');
-                fetchData();
-            }
+            await putFaqs(faqs.filter((f) => f.id !== faq.id));
+            message.success('FAQ deleted');
         } catch {
             message.error('Failed to delete FAQ');
         }

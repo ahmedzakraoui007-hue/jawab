@@ -1,22 +1,25 @@
 import { describe, it, expect } from 'vitest';
 import Twilio from 'twilio';
-import type { NextRequest } from 'next/server';
+import type { Request } from 'express';
 import {
     formatWhatsAppNumber,
     parseWhatsAppWebhook,
     buildTwiMLResponse,
     getTwilioRequestUrl,
     verifyTwilioRequest,
-} from '@/lib/twilio';
+} from './twilio';
 
-/** Minimal NextRequest stand-in — verifyTwilioRequest only ever reads
- * .headers and .nextUrl, so a full Next.js runtime request isn't needed. */
-function makeRequest(url: string, headers: Record<string, string> = {}): NextRequest {
+/** Minimal Express Request stand-in — the functions under test only ever
+ * read .get(header) and .path/.protocol, so a full Express app isn't
+ * needed to exercise them. */
+function makeRequest(url: string, headers: Record<string, string> = {}): Request {
     const parsed = new URL(url);
+    const lowerHeaders = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
     return {
-        headers: new Headers(headers),
-        nextUrl: { pathname: parsed.pathname, host: parsed.host },
-    } as unknown as NextRequest;
+        get: (name: string) => lowerHeaders[name.toLowerCase()],
+        path: parsed.pathname,
+        protocol: parsed.protocol.replace(':', ''),
+    } as unknown as Request;
 }
 
 describe('formatWhatsAppNumber', () => {
@@ -35,17 +38,18 @@ describe('formatWhatsAppNumber', () => {
 
 describe('parseWhatsAppWebhook', () => {
     it('extracts core fields and collects media URLs by index', () => {
-        const form = new FormData();
-        form.set('From', 'whatsapp:+14155551234');
-        form.set('To', 'whatsapp:+14155238886');
-        form.set('Body', 'Hello there');
-        form.set('MessageSid', 'SM123');
-        form.set('NumMedia', '2');
-        form.set('MediaUrl0', 'https://example.com/a.jpg');
-        form.set('MediaUrl1', 'https://example.com/b.jpg');
-        form.set('ProfileName', 'Jane');
+        const body = {
+            From: 'whatsapp:+14155551234',
+            To: 'whatsapp:+14155238886',
+            Body: 'Hello there',
+            MessageSid: 'SM123',
+            NumMedia: '2',
+            MediaUrl0: 'https://example.com/a.jpg',
+            MediaUrl1: 'https://example.com/b.jpg',
+            ProfileName: 'Jane',
+        };
 
-        const result = parseWhatsAppWebhook(form);
+        const result = parseWhatsAppWebhook(body);
 
         expect(result).toMatchObject({
             from: 'whatsapp:+14155551234',
@@ -60,7 +64,7 @@ describe('parseWhatsAppWebhook', () => {
     });
 
     it('defaults missing fields safely instead of throwing', () => {
-        const result = parseWhatsAppWebhook(new FormData());
+        const result = parseWhatsAppWebhook({});
         expect(result.from).toBe('');
         expect(result.numMedia).toBe(0);
         expect(result.mediaUrls).toEqual([]);
@@ -79,16 +83,16 @@ describe('buildTwiMLResponse', () => {
 
 describe('getTwilioRequestUrl', () => {
     it('reconstructs the public URL from forwarded headers', () => {
-        const req = makeRequest('http://internal/api/webhooks/whatsapp', {
+        const req = makeRequest('http://internal/webhooks/whatsapp', {
             'x-forwarded-proto': 'https',
-            host: 'jawab-eight.vercel.app',
+            host: 'jawab-api.up.railway.app',
         });
-        expect(getTwilioRequestUrl(req)).toBe('https://jawab-eight.vercel.app/api/webhooks/whatsapp');
+        expect(getTwilioRequestUrl(req)).toBe('https://jawab-api.up.railway.app/webhooks/whatsapp');
     });
 
-    it('defaults to https when no forwarded-proto header is present', () => {
-        const req = makeRequest('http://internal/api/webhooks/voice', { host: 'example.com' });
-        expect(getTwilioRequestUrl(req)).toBe('https://example.com/api/webhooks/voice');
+    it('defaults to the request protocol when no forwarded-proto header is present', () => {
+        const req = makeRequest('http://internal/webhooks/voice', { host: 'example.com' });
+        expect(getTwilioRequestUrl(req)).toBe('http://example.com/webhooks/voice');
     });
 });
 
@@ -97,13 +101,13 @@ describe('verifyTwilioRequest', () => {
     const authToken = 'test-twilio-auth-token';
 
     it('accepts a request whose signature was genuinely computed with the configured auth token', () => {
-        const url = 'https://jawab-eight.vercel.app/api/webhooks/whatsapp';
+        const url = 'https://jawab-api.up.railway.app/webhooks/whatsapp';
         const params = { From: 'whatsapp:+14155551234', Body: 'Hi' };
         const signature = Twilio.getExpectedTwilioSignature(authToken, url, params);
 
         const req = makeRequest(url, {
             'x-forwarded-proto': 'https',
-            host: 'jawab-eight.vercel.app',
+            host: 'jawab-api.up.railway.app',
             'x-twilio-signature': signature,
         });
 
@@ -111,30 +115,30 @@ describe('verifyTwilioRequest', () => {
     });
 
     it('rejects a request with no signature header', () => {
-        const req = makeRequest('https://jawab-eight.vercel.app/api/webhooks/whatsapp', {
+        const req = makeRequest('https://jawab-api.up.railway.app/webhooks/whatsapp', {
             'x-forwarded-proto': 'https',
-            host: 'jawab-eight.vercel.app',
+            host: 'jawab-api.up.railway.app',
         });
         expect(verifyTwilioRequest(req, {})).toBe(false);
     });
 
     it('rejects a request with a forged/incorrect signature', () => {
-        const req = makeRequest('https://jawab-eight.vercel.app/api/webhooks/whatsapp', {
+        const req = makeRequest('https://jawab-api.up.railway.app/webhooks/whatsapp', {
             'x-forwarded-proto': 'https',
-            host: 'jawab-eight.vercel.app',
+            host: 'jawab-api.up.railway.app',
             'x-twilio-signature': 'totally-not-valid',
         });
         expect(verifyTwilioRequest(req, { From: 'whatsapp:+14155551234' })).toBe(false);
     });
 
     it('rejects when the params were tampered with after signing', () => {
-        const url = 'https://jawab-eight.vercel.app/api/webhooks/whatsapp';
+        const url = 'https://jawab-api.up.railway.app/webhooks/whatsapp';
         const signedParams = { From: 'whatsapp:+14155551234', Body: 'Hi' };
         const signature = Twilio.getExpectedTwilioSignature(authToken, url, signedParams);
 
         const req = makeRequest(url, {
             'x-forwarded-proto': 'https',
-            host: 'jawab-eight.vercel.app',
+            host: 'jawab-api.up.railway.app',
             'x-twilio-signature': signature,
         });
 

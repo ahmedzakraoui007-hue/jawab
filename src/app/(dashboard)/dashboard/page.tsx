@@ -3,9 +3,7 @@
 import { useEffect, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { authFetch } from '@/lib/auth-fetch';
-import { db } from '@/lib/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { backendFetch } from '@/lib/backend-fetch';
 import { Row, Col, Typography } from 'antd';
 import {
     MessageOutlined,
@@ -16,12 +14,10 @@ import { StatsCard, RecentConversationsList, UpcomingBookingsList } from '@/comp
 
 const { Title, Text } = Typography;
 
-function detectLanguageFromMessages(messages: { role: string; content: string }[]): string {
-    if (!messages || messages.length === 0) return 'Unknown';
-    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-    if (!lastUserMsg) return 'Unknown';
-    if (/[؀-ۿ]/.test(lastUserMsg.content)) return 'Arabic';
-    if (/[ऀ-ॿ]/.test(lastUserMsg.content)) return 'Hindi';
+function detectLanguageFromText(text: string | null): string {
+    if (!text) return 'Unknown';
+    if (/[؀-ۿ]/.test(text)) return 'Arabic';
+    if (/[ऀ-ॿ]/.test(text)) return 'Hindi';
     return 'English';
 }
 
@@ -29,8 +25,7 @@ function formatBookingDate(iso: string): string {
     const d = new Date(iso);
     const today = new Date();
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-    const isSameDay = (a: Date, b: Date) =>
-        a.toDateString() === b.toDateString();
+    const isSameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
     if (isSameDay(d, today)) return 'Today';
     if (isSameDay(d, tomorrow)) return 'Tomorrow';
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -44,37 +39,40 @@ export default function DashboardPage() {
     const [bookingsToday, setBookingsToday] = useState(0);
     const [revenueToday, setRevenueToday] = useState(0);
 
-    // Real-time listener for the 4 most recent conversations
+    // Polls the 4 most recent conversations — replaces Firestore's
+    // onSnapshot real-time listener (Postgres has no built-in equivalent).
     useEffect(() => {
-        if (!user?.businessId || !db) return;
+        if (!user?.businessId) return;
 
-        const convsRef = collection(db, 'businesses', user.businessId, 'conversations');
-        const q = query(convsRef, orderBy('lastMessageAt', 'desc'), limit(4));
-
-        const unsubscribe = onSnapshot(
-            q,
-            (snapshot) => {
+        async function fetchConversations() {
+            try {
+                const res = await backendFetch('/conversations?limit=4');
+                if (!res.ok) return;
+                const data = await res.json();
                 const todayStr = new Date().toDateString();
                 let todayCount = 0;
-                const convs = snapshot.docs.map((d) => {
-                    const data = d.data();
-                    const startedAt = data.startedAt?.toDate?.();
-                    if (startedAt && startedAt.toDateString() === todayStr) todayCount += 1;
+
+                const convs = (data.conversations || []).map((c: any) => {
+                    if (c.startedAt && new Date(c.startedAt).toDateString() === todayStr) todayCount += 1;
                     return {
-                        id: d.id,
-                        ...data,
-                        timestamp: data.lastMessageAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-                        lastMessage: data.messages?.slice(-1)?.[0]?.content || 'No messages yet',
-                        language: detectLanguageFromMessages(data.messages || []),
+                        id: c.id,
+                        ...c,
+                        timestamp: c.lastMessageAt || new Date().toISOString(),
+                        lastMessage: c.lastMessage || 'No messages yet',
+                        language: detectLanguageFromText(c.lastMessage),
                     };
                 });
+
                 setConversations(convs);
                 setConversationsToday(todayCount);
-            },
-            (err) => console.error('[Overview] Conversations listener error:', err)
-        );
+            } catch (err) {
+                console.error('[Overview] Conversations fetch error:', err);
+            }
+        }
 
-        return () => unsubscribe();
+        fetchConversations();
+        const interval = setInterval(fetchConversations, 15000);
+        return () => clearInterval(interval);
     }, [user?.businessId]);
 
     // Upcoming bookings + today's booking stats
@@ -82,7 +80,7 @@ export default function DashboardPage() {
         async function fetchBookings() {
             if (!user?.businessId) return;
             try {
-                const res = await authFetch(`/api/calendar/book?businessId=${user.businessId}`);
+                const res = await backendFetch('/calendar/book');
                 if (!res.ok) return;
                 const data = await res.json();
                 const now = new Date();

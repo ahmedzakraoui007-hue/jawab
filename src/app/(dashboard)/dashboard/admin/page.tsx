@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { authFetch } from '@/lib/auth-fetch';
+import { backendFetch } from '@/lib/backend-fetch';
 import {
     Card,
     Table,
@@ -85,7 +85,7 @@ export default function AdminPage() {
 
     const fetchPlanLimits = useCallback(async () => {
         try {
-            const res = await authFetch('/api/admin/plan-limits');
+            const res = await backendFetch('/admin/plan-limits');
             if (!res.ok) return;
             const data: { overrides: Partial<Record<PlanTier, number | null>>; defaults: Record<PlanTier, number | null> } = await res.json();
             setPlanDefaults(data.defaults);
@@ -109,7 +109,7 @@ export default function AdminPage() {
 
     const fetchStats = useCallback(async () => {
         try {
-            const res = await authFetch('/api/admin/stats');
+            const res = await backendFetch('/admin/stats');
             if (res.status === 403 || res.status === 401) {
                 setForbidden(true);
                 return;
@@ -138,7 +138,7 @@ export default function AdminPage() {
                 if (row.override) overrides[plan] = row.unlimited ? null : row.value;
             }
 
-            const res = await authFetch('/api/admin/plan-limits', {
+            const res = await backendFetch('/admin/plan-limits', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ overrides }),
@@ -166,7 +166,7 @@ export default function AdminPage() {
         if (!numberModal) return;
         setSubmitting(true);
         try {
-            const res = await authFetch('/api/admin/numbers', {
+            const res = await backendFetch('/admin/numbers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ businessId: numberModal.businessId, ...values }),
@@ -190,7 +190,7 @@ export default function AdminPage() {
 
     const handleRemoveNumber = async (businessId: string, type: 'whatsapp' | 'phone') => {
         try {
-            const res = await authFetch('/api/admin/numbers', {
+            const res = await backendFetch('/admin/numbers', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ businessId, type }),
