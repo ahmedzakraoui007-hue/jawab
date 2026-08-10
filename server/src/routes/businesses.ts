@@ -82,3 +82,67 @@ businessesRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
 
     res.json({ business });
 }));
+
+const updateBusinessSchema = z.object({
+    name: z.string().trim().min(1).optional(),
+    description: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    area: z.string().trim().optional(),
+    city: z.string().trim().optional(),
+    googleMapsLink: z.string().trim().nullable().optional(),
+    tone: z.enum(['friendly', 'professional', 'casual']).optional(),
+    hours: z.record(z.string(), dayHoursSchema).optional(),
+}).strict();
+
+async function requireOwnBusinessId(userId: string): Promise<string | null> {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    return user?.businessId ?? null;
+}
+
+businessesRouter.patch('/me', requireAuth, asyncHandler(async (req, res) => {
+    const businessId = await requireOwnBusinessId(req.userId!);
+    if (!businessId) {
+        res.status(403).json({ error: 'No business associated with this account' });
+        return;
+    }
+
+    const data = updateBusinessSchema.parse(req.body);
+    const business = await prisma.business.update({ where: { id: businessId }, data });
+    res.json({ business });
+}));
+
+const servicesSchema = z.array(z.object({
+    name: z.string().trim().min(1),
+    nameAr: z.string().trim().optional(),
+    price: z.number().nonnegative(),
+    duration: z.number().positive(),
+}));
+
+businessesRouter.put('/me/services', requireAuth, asyncHandler(async (req, res) => {
+    const businessId = await requireOwnBusinessId(req.userId!);
+    if (!businessId) {
+        res.status(403).json({ error: 'No business associated with this account' });
+        return;
+    }
+
+    const services = servicesSchema.parse(req.body.services);
+    const business = await prisma.business.update({ where: { id: businessId }, data: { services } });
+    res.json({ services: business.services });
+}));
+
+const faqsSchema = z.array(z.object({
+    question: z.string().trim().min(1),
+    answer: z.string().trim().min(1),
+}));
+
+businessesRouter.put('/me/faqs', requireAuth, asyncHandler(async (req, res) => {
+    const businessId = await requireOwnBusinessId(req.userId!);
+    if (!businessId) {
+        res.status(403).json({ error: 'No business associated with this account' });
+        return;
+    }
+
+    const customFaqs = faqsSchema.parse(req.body.faqs);
+    const business = await prisma.business.update({ where: { id: businessId }, data: { customFaqs } });
+    res.json({ faqs: business.customFaqs });
+}));

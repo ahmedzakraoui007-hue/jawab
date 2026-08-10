@@ -1,7 +1,6 @@
-// Phase A schema — auth + business shell only. See
-// C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md for the full
-// migration roadmap (Phases B-D add Message/Booking/Usage/Subscription/
-// PlatformConfig and the remaining Business columns).
+// Phase A+B schema. See C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md
+// for the full migration roadmap. Phase C removes Firebase from the
+// Next.js app entirely and ports its remaining dashboard routes here.
 
 generator client {
   provider = "prisma-client-js"
@@ -31,35 +30,81 @@ model User {
   createdAt          DateTime  @default(now()) @map("created_at")
   lastLoginAt        DateTime? @map("last_login_at")
 
-  refreshTokens  RefreshToken[]
+  refreshTokens   RefreshToken[]
   ownedBusinesses Business[]     @relation("BusinessCreator")
 
   @@map("users")
 }
 
 model Business {
-  id              String   @id @default(uuid())
-  ownerId         String   @map("owner_id")
-  owner           User     @relation("BusinessCreator", fields: [ownerId], references: [id])
-  name            String
-  industry        String?
-  description     String?
-  address         String?
-  area            String?
-  city            String?
-  country         String?
-  googleMapsLink  String?  @map("google_maps_link")
-  timezone        String   @default("Asia/Dubai")
-  tone            String   @default("friendly")
-  hours           Json     @default("{}")
-  services        Json     @default("[]")
-  customFaqs      Json     @default("[]") @map("custom_faqs")
-  staffIds        String[] @default([]) @map("staff_ids")
-  whatsappNumberRequested String? @map("whatsapp_number_requested")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                      String   @id @default(uuid())
+  ownerId                 String   @map("owner_id")
+  owner                   User     @relation("BusinessCreator", fields: [ownerId], references: [id])
+  name                    String
+  industry                String?
+  description             String?
+  address                 String?
+  area                    String?
+  city                    String?
+  country                 String?
+  googleMapsLink          String?  @map("google_maps_link")
+  timezone                String   @default("Asia/Dubai")
+  tone                    String   @default("friendly")
+  hours                   Json     @default("{}")
+  services                Json     @default("[]")
+  customFaqs              Json     @default("[]") @map("custom_faqs")
+  staffIds                String[] @default([]) @map("staff_ids")
+  whatsappNumberRequested String?  @map("whatsapp_number_requested")
 
-  staffMembers User[] @relation("BusinessOwner")
+  // Assigned numbers (set by a platform admin, /admin/numbers)
+  whatsappNumber Json? @map("whatsapp_number")
+  phoneNumber    Json? @map("phone_number")
+
+  // Meta (Messenger/Instagram) connection — populated by the OAuth
+  // callback. TODO carried over from the Firestore version: accessToken
+  // is stored unencrypted; not solved in this migration either.
+  metaAccessToken           String?   @map("meta_access_token")
+  metaPageId                String?   @map("meta_page_id")
+  metaPageName              String?   @map("meta_page_name")
+  metaInstagramAccountId    String?   @map("meta_instagram_account_id")
+  metaInstagramUsername     String?   @map("meta_instagram_username")
+  metaTokenExpiresAt        DateTime? @map("meta_token_expires_at")
+  metaConnectedAt           DateTime? @map("meta_connected_at")
+  metaConnectedBy           String?   @map("meta_connected_by")
+
+  // Google Calendar connection
+  calendarAccessToken  String?   @map("calendar_access_token")
+  calendarRefreshToken String?   @map("calendar_refresh_token")
+  calendarId           String?   @map("calendar_id")
+  calendarConnected    Boolean   @default(false) @map("calendar_connected")
+  calendarEmail        String?   @map("calendar_email")
+  calendarConnectedBy  String?   @map("calendar_connected_by")
+
+  // Billing — mirrors what the Stripe webhook used to write onto
+  // Firestore's business.billing. Columns rather than a Subscription
+  // table: strictly 1:1 with Business, and admin stats aggregates these
+  // directly without an extra join.
+  stripeCustomerId     String?   @map("stripe_customer_id")
+  stripeSubscriptionId String?   @map("stripe_subscription_id")
+  billingPlan          String?   @map("billing_plan")
+  billingStatus        String?   @map("billing_status")
+  billingCurrentPeriodEnd DateTime? @map("billing_current_period_end")
+  billingCancelAtPeriodEnd Boolean @default(false) @map("billing_cancel_at_period_end")
+  billingAmount        Float?    @map("billing_amount")
+  billingCurrency      String?   @map("billing_currency")
+  billingInterval      String?   @map("billing_interval")
+
+  // Per-business plan-limit override — see plan-limits.ts's three-layer
+  // precedence (this -> platform_config -> code default).
+  planOverrideConversationLimit Float? @map("plan_override_conversation_limit")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  staffMembers  User[]         @relation("BusinessOwner")
+  conversations Conversation[]
+  bookings      Booking[]
+  usage         Usage[]
 
   @@map("businesses")
 }
@@ -75,4 +120,126 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+enum Channel {
+  whatsapp
+  voice
+  messenger
+  instagram_dm
+  instagram_comment
+  facebook_comment
+}
+
+enum ConversationStatus {
+  active
+  resolved
+  escalated
+  archived
+}
+
+model Conversation {
+  id               String             @id @default(uuid())
+  businessId       String             @map("business_id")
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerPhone    String?            @map("customer_phone")
+  customerName     String?            @map("customer_name")
+  channel          Channel
+  status           ConversationStatus @default(active)
+  handledBy        String             @default("ai") @map("handled_by")
+  // Meta DMs/comments are keyed by platform sender id, not a phone number.
+  platformId       String?            @map("platform_id")
+  // Voice calls are keyed by Twilio's CallSid.
+  callSid          String?            @map("call_sid")
+  lastIntent       String?            @map("last_intent")
+  postId           String?            @map("post_id")
+  commentId        String?            @map("comment_id")
+  isPublic         Boolean            @default(false) @map("is_public")
+  startedAt        DateTime           @default(now()) @map("started_at")
+  lastMessageAt    DateTime           @default(now()) @map("last_message_at")
+
+  messages Message[]
+  bookings Booking[]
+
+  @@index([businessId, channel, status])
+  @@index([businessId, customerPhone])
+  @@index([businessId, platformId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String
+  content        String
+  timestamp      DateTime     @default(now())
+
+  @@index([conversationId, timestamp])
+  @@map("messages")
+}
+
+enum BookingStatus {
+  pending
+  confirmed
+  cancelled
+  completed
+  no_show
+  rescheduled
+}
+
+model Booking {
+  id               String        @id @default(uuid())
+  businessId       String        @map("business_id")
+  business         Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  conversationId   String?       @map("conversation_id")
+  conversation     Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  customerName     String        @map("customer_name")
+  customerPhone    String        @map("customer_phone")
+  customerEmail    String?       @map("customer_email")
+  service          String
+  serviceDuration  Int           @map("service_duration")
+  price            Float         @default(0)
+  currency         String        @default("AED")
+  startTime        DateTime      @map("start_time")
+  endTime          DateTime      @map("end_time")
+  status           BookingStatus @default(confirmed)
+  calendarEventId  String?       @map("calendar_event_id")
+  createdVia       String?       @map("created_via")
+  notes            String?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  @@index([businessId, startTime])
+  @@map("bookings")
+}
+
+model Usage {
+  id                String   @id @default(uuid())
+  businessId        String   @map("business_id")
+  business          Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  period            String
+  conversationCount Int      @default(0) @map("conversation_count")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([businessId, period])
+  @@map("usage")
+}
+
+/// Singleton row (id is always "platform") holding platform-wide
+/// operational settings — currently just plan-limit overrides. See
+/// plan-limits.ts.
+model PlatformConfig {
+  id                       String @id @default("platform")
+  planConversationLimits   Json   @default("{}") @map("plan_conversation_limits")
+
+  @@map("platform_config")
+}
+
+model RateLimit {
+  key         String   @id
+  count       Int      @default(0)
+  windowStart DateTime @map("window_start")
+
+  @@map("rate_limits")
 }

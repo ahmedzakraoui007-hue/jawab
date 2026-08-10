@@ -6,15 +6,16 @@ declare global {
     namespace Express {
         interface Request {
             userId?: string;
+            authUser?: { id: string; email: string };
         }
     }
 }
 
 /**
- * Verifies the Bearer access token and attaches req.userId. Mirrors the
- * Next.js app's existing middleware.ts pattern (which injected
- * x-user-uid/x-user-email headers after verifying a Firebase ID token) —
- * same shape, different token source.
+ * Verifies the Bearer access token and attaches req.userId/req.authUser.
+ * Mirrors the Next.js app's existing middleware.ts pattern (which
+ * injected x-user-uid/x-user-email headers after verifying a Firebase ID
+ * token) — same shape, different token source.
  */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
     const authHeader = req.headers.authorization;
@@ -31,5 +32,6 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     req.userId = payload.sub;
+    req.authUser = { id: payload.sub, email: payload.email };
     next();
 }
