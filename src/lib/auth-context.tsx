@@ -1,7 +1,7 @@
 'use client';
 
-import { createContext, useContext, useCallback, useEffect, useState, ReactNode } from 'react';
-import { backendFetch, refreshAccessToken } from '@/lib/backend-fetch';
+import { createContext, useContext, useCallback, useEffect, useRef, useState, ReactNode } from 'react';
+import { backendFetch, refreshAccessToken, BACKEND_URL } from '@/lib/backend-fetch';
 import { setAccessToken } from '@/lib/session';
 
 export interface AuthUser {
@@ -23,12 +23,14 @@ interface AuthContextType {
     signInWithEmail: (email: string, password: string) => Promise<void>;
     signUpWithEmail: (email: string, password: string, displayName: string) => Promise<void>;
 
-    // Google — not available yet, see the Phase A/D split in
-    // C:\Users\mhirs\.claude\plans\zippy-beaming-popcorn.md
+    // Google — redirect-based: navigates the browser away, so this never
+    // actually resolves on success (the page unloads first).
     signInWithGoogle: () => Promise<void>;
 
-    // Phone — not available yet, same reason as Google above.
-    sendPhoneOTP: (phoneNumber: string) => Promise<void>;
+    // Phone — sendPhoneOTP remembers the phone (and, for signup, the
+    // display name) in-memory; verifyPhoneOTP only needs the code because
+    // of that.
+    sendPhoneOTP: (phoneNumber: string, displayName?: string) => Promise<void>;
     verifyPhoneOTP: (code: string) => Promise<void>;
 
     // Common
@@ -82,12 +84,11 @@ async function extractErrorMessage(res: Response): Promise<string> {
     }
 }
 
-const NOT_YET_AVAILABLE = 'This sign-in method is not available yet. Please use email and password.';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const pendingPhoneRef = useRef<{ phone: string; displayName?: string } | null>(null);
 
     // Equivalent to Firebase's onAuthStateChanged: on first load, try to
     // silently restore a session from the httpOnly refresh cookie (if any)
@@ -168,18 +169,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const signInWithGoogle = async () => {
-        setError(NOT_YET_AVAILABLE);
-        throw new Error(NOT_YET_AVAILABLE);
+        // Full page navigation, not fetch — the backend redirects to
+        // Google, then back to /auth/callback once it's issued a session
+        // cookie. Nothing after this line runs before the page unloads.
+        window.location.href = `${BACKEND_URL}/auth/google`;
     };
 
-    const sendPhoneOTP = async () => {
-        setError(NOT_YET_AVAILABLE);
-        throw new Error(NOT_YET_AVAILABLE);
+    const sendPhoneOTP = async (phoneNumber: string, displayName?: string) => {
+        setError(null);
+        const res = await backendFetch('/auth/phone/send-otp', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phoneNumber }),
+        });
+        if (!res.ok) {
+            const message = await extractErrorMessage(res);
+            setError(message);
+            throw new Error(message);
+        }
+        pendingPhoneRef.current = { phone: phoneNumber, displayName };
     };
 
-    const verifyPhoneOTP = async () => {
-        setError(NOT_YET_AVAILABLE);
-        throw new Error(NOT_YET_AVAILABLE);
+    const verifyPhoneOTP = async (code: string) => {
+        if (!pendingPhoneRef.current) {
+            const message = 'Please request a new code.';
+            setError(message);
+            throw new Error(message);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const { phone, displayName } = pendingPhoneRef.current;
+            const res = await backendFetch('/auth/phone/verify-otp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone, code, displayName }),
+            });
+            if (!res.ok) {
+                const message = await extractErrorMessage(res);
+                setError(message);
+                throw new Error(message);
+            }
+            const data = await res.json();
+            setAccessToken(data.accessToken);
+            setUser(toAuthUser(data.user));
+            pendingPhoneRef.current = null;
+        } finally {
+            setLoading(false);
+        }
     };
 
     const signOut = async () => {
@@ -195,10 +233,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    const resetPassword = async () => {
-        const message = 'Password reset isn\'t available yet — please contact support.';
-        setError(message);
-        throw new Error(message);
+    const resetPassword = async (email: string) => {
+        setError(null);
+        const res = await backendFetch('/auth/password/forgot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email }),
+        });
+        if (!res.ok) {
+            const message = await extractErrorMessage(res);
+            setError(message);
+            throw new Error(message);
+        }
     };
 
     const refreshUser = useCallback(async () => {

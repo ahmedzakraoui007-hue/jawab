@@ -1,7 +1,7 @@
 import { google, calendar_v3 } from 'googleapis';
 
-const CLIENT_ID = process.env.GOOGLE_CALENDAR_CLIENT_ID;
-const CLIENT_SECRET = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+const CLIENT_ID = process.env.GOOGLE_OAUTH_CLIENT_ID;
+const CLIENT_SECRET = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
 const BACKEND_URL = process.env.BACKEND_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`;
 const REDIRECT_URI = `${BACKEND_URL}/integrations/calendar/callback`;
 

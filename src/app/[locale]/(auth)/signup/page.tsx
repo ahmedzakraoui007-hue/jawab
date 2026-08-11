@@ -138,7 +138,7 @@ export default function SignupPage() {
 
         try {
             const formattedPhone = formData.phone.startsWith('+') ? formData.phone : `+${formData.phone}`;
-            await sendPhoneOTP(formattedPhone);
+            await sendPhoneOTP(formattedPhone, formData.ownerName);
             setOtpSent(true);
         } catch (err: unknown) {
             setLocalError((err as Error).message);

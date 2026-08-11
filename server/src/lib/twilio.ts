@@ -4,8 +4,10 @@ import type { Request } from 'express';
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const whatsappNumber = process.env.TWILIO_WHATSAPP_NUMBER; // Format: whatsapp:+14155238886
+const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
 export const isTwilioConfigured = Boolean(accountSid && authToken);
+export const isPhoneVerificationConfigured = Boolean(accountSid && authToken && verifyServiceSid);
 
 let twilioClient: Twilio.Twilio | null = null;
 
@@ -85,6 +87,40 @@ export function verifyTwilioRequest(request: Request, params: Record<string, str
 
     const url = getTwilioRequestUrl(request);
     return Twilio.validateRequest(authToken, signature, url, params);
+}
+
+/**
+ * Sends a one-time code via Twilio Verify (SMS channel) to `phone` (E.164,
+ * e.g. "+14155551234"). Twilio owns code generation/expiry/attempt limits —
+ * there's no OTP value to store on our side, only the outcome of checking
+ * it later (see checkPhoneVerification).
+ */
+export async function sendPhoneVerification(phone: string): Promise<void> {
+    if (!verifyServiceSid) {
+        throw new Error('TWILIO_VERIFY_SERVICE_SID not configured');
+    }
+    const client = getTwilioClient();
+    await client.verify.v2.services(verifyServiceSid).verifications.create({ to: phone, channel: 'sms' });
+}
+
+/** Returns true only if `code` is the currently valid, unexpired code for
+ * `phone` — Twilio marks it consumed after one successful check. */
+export async function checkPhoneVerification(phone: string, code: string): Promise<boolean> {
+    if (!verifyServiceSid) {
+        throw new Error('TWILIO_VERIFY_SERVICE_SID not configured');
+    }
+    const client = getTwilioClient();
+    try {
+        const check = await client.verify.v2.services(verifyServiceSid).verificationChecks.create({ to: phone, code });
+        return check.status === 'approved';
+    } catch (error) {
+        // Twilio throws (rather than returning a "pending"/"failed" status)
+        // for a code that doesn't match any outstanding verification at
+        // all (e.g. already used, or never sent) — that's a failed check,
+        // not a server error.
+        console.warn('[Twilio Verify] Check failed:', error instanceof Error ? error.message : error);
+        return false;
+    }
 }
 
 /** Format phone number for WhatsApp */

@@ -57,6 +57,15 @@ function LoginContent() {
         setLocalError('');
     }, [authMethod, clearError]);
 
+    useEffect(() => {
+        // Landed here from a failed /auth/google/callback redirect.
+        if (searchParams.get('error')?.startsWith('google_')) {
+            setLocalError(dict.login.googleSignInFailed);
+        }
+        // Only meant to run once, off the URL present on first render.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleEmailLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);

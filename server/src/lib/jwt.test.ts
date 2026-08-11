@@ -28,11 +28,18 @@ describe('access tokens', () => {
         expect(verifyAccessToken(expired)).toBeNull();
     });
 
-    it('rejects a validly-signed token missing the email claim', () => {
+    it('rejects a validly-signed token missing the email claim entirely', () => {
         // e.g. an older token format, or a hand-crafted forgery that got
-        // the signature right but not the expected payload shape.
+        // the signature right but not the expected payload shape. Distinct
+        // from an explicit `email: null` below — that's a real, supported
+        // payload shape; an absent key is not.
         const missingEmail = jwt.sign({ sub: 'user-123' }, 'test-access-secret');
         expect(verifyAccessToken(missingEmail)).toBeNull();
+    });
+
+    it('round-trips an explicit null email — phone/Google-only accounts have none', () => {
+        const token = signAccessToken('user-123', null);
+        expect(verifyAccessToken(token)).toEqual({ sub: 'user-123', email: null });
     });
 });
 

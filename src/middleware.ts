@@ -4,7 +4,7 @@ import { locales, defaultLocale, type Locale } from '@/i18n/config';
 
 // Routes that live outside the [locale] segment — the authenticated app
 // stays English/LTR only for now, so it's excluded from locale redirects.
-const NON_LOCALIZED_PREFIXES = ['/dashboard', '/onboarding'];
+const NON_LOCALIZED_PREFIXES = ['/dashboard', '/onboarding', '/auth'];
 
 function detectLocale(request: NextRequest): Locale {
     const cookieLocale = request.cookies.get('NEXT_LOCALE')?.value;

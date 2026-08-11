@@ -60,4 +60,15 @@ describe('requirePlatformAdmin', () => {
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(401);
     });
+
+    it('rejects with 401 for an authenticated user with no email (phone/Google-only account)', () => {
+        const req = { authUser: { id: 'u1', email: null } } as unknown as Request;
+        const res = makeRes();
+        const next = vi.fn() as NextFunction;
+
+        requirePlatformAdmin(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+    });
 });

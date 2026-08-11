@@ -23,18 +23,18 @@ interface TokenPayload {
 }
 
 interface AccessTokenPayload extends TokenPayload {
-    email: string;
+    email: string | null;
 }
 
 /**
- * Access tokens carry email as well as the user id — the Next.js app's
- * middleware.ts injects both x-user-uid and x-user-email headers for
- * downstream API routes (requirePlatformAdmin checks the email against an
- * allowlist), the same shape it already expected from a Firebase ID
- * token's claims. Refresh tokens don't need this — they're never used to
- * authorize a request directly, only to mint a new access token.
+ * Access tokens carry email as well as the user id — requirePlatformAdmin
+ * checks it against an allowlist. Email is nullable: a user who only ever
+ * signed up via phone OTP has no email at all, and is simply never able to
+ * pass the admin allowlist check (see auth-guard.ts). Refresh tokens don't
+ * need this — they're never used to authorize a request directly, only to
+ * mint a new access token.
  */
-export function signAccessToken(userId: string, email: string): string {
+export function signAccessToken(userId: string, email: string | null): string {
     return jwt.sign({ sub: userId, email }, ACCESS_SECRET, { expiresIn: ACCESS_TOKEN_TTL_SECONDS });
 }
 
@@ -45,7 +45,7 @@ export function signRefreshToken(userId: string): string {
 export function verifyAccessToken(token: string): AccessTokenPayload | null {
     try {
         const payload = jwt.verify(token, ACCESS_SECRET);
-        if (typeof payload === 'object' && typeof payload.sub === 'string' && typeof payload.email === 'string') {
+        if (typeof payload === 'object' && typeof payload.sub === 'string' && (typeof payload.email === 'string' || payload.email === null)) {
             return { sub: payload.sub, email: payload.email };
         }
         return null;

@@ -121,6 +121,7 @@ export interface Dictionary {
         passwordPlaceholder: string;
         rememberMe: string;
         forgotPassword: string;
+        googleSignInFailed: string;
         signIn: string;
         phoneLabel: string;
         phonePlaceholder: string;
@@ -166,6 +167,22 @@ export interface Dictionary {
         checkInboxBody: string;
         useDifferentEmail: string;
         backToLogin: string;
+    };
+    resetPassword: {
+        title: string;
+        subtitle: string;
+        passwordLabel: string;
+        passwordPlaceholder: string;
+        confirmLabel: string;
+        confirmPlaceholder: string;
+        submit: string;
+        successTitle: string;
+        successBody: string;
+        goToLogin: string;
+        invalidTitle: string;
+        invalidBody: string;
+        requestNewLink: string;
+        passwordMismatch: string;
     };
     validation: {
         nameRequired: string;
